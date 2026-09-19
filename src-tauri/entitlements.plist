@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Used once Apple Developer ID signing + hardened runtime are enabled.
+  Today macOS builds are ad-hoc signed with hardenedRuntime=false (see
+  tauri.conf.json) so TCC gets a stable com.capptivo.desktop identity without
+  breaking the ffmpeg/ffprobe sidecars. Camera + mic still use Info.plist
+  NS*UsageDescription strings.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+  </dict>
+</plist>

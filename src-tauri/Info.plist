@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the bundled app's Info.plist by Tauri. The capture usage strings
+  are mandatory for the APIs used by Capptivo: camera/microphone for the
+  face-cam and narration, and screen/system audio for ScreenCaptureKit.
+
+  LSUIElement=1 makes this a menubar agent (no Dock icon at launch); the Rust
+  side flips to a Regular activation policy when a library or editor window opens.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Capptivo uses your camera to record a webcam bubble alongside your screen.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Capptivo uses your microphone to record narration with your screen.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Capptivo records your screen and system audio to create a video.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Capptivo records system audio together with your screen.</string>
+    <key>LSUIElement</key>
+    <true/>
+  </dict>
+</plist>
