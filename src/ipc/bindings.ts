@@ -9,6 +9,8 @@ import type {
   PlatformCapabilities,
   Project,
   ProjectSummary,
+  ScreenshotProject,
+  ScreenshotSummary,
   RecorderConfig,
   RecorderMenuSpace,
   RecorderState,
@@ -64,6 +66,11 @@ export const commands = {
   setRecordingMicMuted: (muted: boolean) =>
     invoke<void>("set_recording_mic_muted", { muted }),
   stopRecording: () => invoke<string>("stop_recording"),
+  captureScreenshot: (args: {
+    sourceId: string;
+    crop: CaptureAreaSelection["crop"] | null;
+    showCursor: boolean;
+  }) => invoke<string>("capture_screenshot", args),
   pickCaptureArea: () => invoke<CaptureAreaSelection>("pick_capture_area"),
   completeAreaPick: (x: number, y: number, width: number, height: number) =>
     invoke<void>("complete_area_pick", { x, y, width, height }),
@@ -125,6 +132,8 @@ export const commands = {
     invoke<void>("set_annotation_display_follow", { follow }),
   openLibrary: () => invoke<void>("open_library"),
   openEditor: (projectId: string) => invoke<void>("open_editor", { projectId }),
+  openScreenshotEditor: (screenshotId: string) =>
+    invoke<void>("open_screenshot_editor", { screenshotId }),
   presentWindow: () => invoke<void>("present_window"),
   /** Font families visible to the host OS (Core Text on macOS). */
   listSystemFonts: () => invoke<string[]>("list_system_fonts"),
@@ -144,6 +153,12 @@ export const commands = {
 
   // --- projects ---
   listProjects: () => invoke<ProjectSummary[]>("list_projects"),
+  listScreenshots: () => invoke<ScreenshotSummary[]>("list_screenshots"),
+  loadScreenshot: (id: string) => invoke<ScreenshotProject>("load_screenshot", { id }),
+  saveScreenshotState: (id: string, editorState: unknown) =>
+    invoke<void>("save_screenshot_state", { id, editorState }),
+  renameScreenshot: (id: string, title: string | null) =>
+    invoke<void>("rename_screenshot", { id, title }),
   loadProject: (id: string) => invoke<Project>("load_project", { id }),
   saveEditorState: (id: string, editorState: unknown) =>
     invoke<void>("save_editor_state", { id, editorState }),

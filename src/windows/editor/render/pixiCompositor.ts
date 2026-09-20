@@ -273,9 +273,10 @@ export async function createPixiFrameCompositor(
     profiler.mark("screenUpload");
 
     if (screenSize) {
-      const hasSelectedBackground = backgroundImage !== null;
+      const hasSelectedBackground = backgroundImage !== null || inputs.forcePaddingOnMatch === true;
       const hasImageBackground =
-        hasSelectedBackground && (inputs.backgroundType ?? "image") === "image";
+        inputs.forcePaddingOnMatch === true ||
+        (hasSelectedBackground && (inputs.backgroundType ?? "image") === "image");
       const { sourceAspect, devicePadding: basePadding } =
         resolveRecordingLayoutParams({
           presetId: inputs.aspectRatioPresetId ?? "recording",

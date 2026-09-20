@@ -7,7 +7,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { save } from "@tauri-apps/plugin-dialog";
 import { totalKeptDuration } from "@/engine";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/settings";
 import { commands } from "@/ipc/bindings";
@@ -23,10 +26,12 @@ import { InspectorChrome } from "./components/InspectorChrome";
 import { LookPanel } from "./components/LookPanel";
 import { PreviewStage } from "./components/PreviewStage";
 import { RecordingsLibrary } from "./components/RecordingsLibrary";
+import { ScreenshotToolsPanel } from "./components/ScreenshotToolsPanel";
 import { Timeline } from "./components/Timeline";
 import { ZoomPanel } from "./components/ZoomPanel";
 import type { ExportSettings } from "./export/exportSettings";
 import { exportProject } from "./export/exportVideo";
+import { ExportSink } from "./export/exportSink";
 import { useStageDimensions } from "./lib/useStageDimensions";
 import { presentableVideoTime } from "./lib/presentableVideoTime";
 import { dismissEditorSplash } from "./splash";
@@ -64,10 +69,15 @@ export function EditorApp() {
   const exportError = useEditorStore((s) => s.exportError);
   const project = useEditorStore((s) => s.project);
   const projectId = useEditorStore((s) => s.projectId);
+  const screenshotId = useEditorStore((s) => s.screenshotId);
   const stage = useStageDimensions();
   const [exportOpen, setExportOpen] = useState(false);
+  const [screenshotExportOpen, setScreenshotExportOpen] = useState(false);
+  const [screenshotFormat, setScreenshotFormat] = useState<"png" | "jpeg">("png");
+  const [screenshotExporting, setScreenshotExporting] = useState(false);
   const [shell, setShell] = useState<"editor" | "library">(initialShell);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenshotFrameRef = useRef<(() => HTMLCanvasElement | null) | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,8 +87,9 @@ export function EditorApp() {
       // (that used to yank to the primary monitor and flash Spaces).
       return;
     }
-    const id = params.get("project");
-    if (id) void init(id);
+    const screenshot = params.get("screenshot");
+    const id = params.get("project") ?? screenshot;
+    if (id) void init(id, screenshot !== null);
     else
       useEditorStore.setState({ ready: true, error: "No project id in URL." });
   }, [init]);
@@ -192,6 +203,15 @@ export function EditorApp() {
     [init],
   );
 
+  const openScreenshot = useCallback(
+    async (id: string) => {
+      await init(id, true);
+      history.replaceState(null, "", `?screenshot=${encodeURIComponent(id)}`);
+      setShell("editor");
+    },
+    [init],
+  );
+
   const kept = segments.length > 0 ? totalKeptDuration(segments) : duration;
 
   const renameTitle = useCallback((next: string) => {
@@ -211,6 +231,51 @@ export function EditorApp() {
   const runExport = (settings: ExportSettings) => {
     setExportOpen(false);
     void exportProject(settings);
+  };
+
+  const exportScreenshot = async (format: "png" | "jpeg") => {
+    if (!screenshotId) return;
+    let sink: ExportSink | null = null;
+    setScreenshotExporting(true);
+    try {
+      const canvas = screenshotFrameRef.current?.();
+      if (!canvas) throw new Error("画像の描画が完了していません");
+      const path = await save({
+        defaultPath: `${project?.title?.trim() || "Screenshot"}.${format === "png" ? "png" : "jpg"}`,
+        filters: [format === "png"
+          ? { name: "PNG image", extensions: ["png"] }
+          : { name: "JPEG image", extensions: ["jpg", "jpeg"] }],
+      });
+      if (!path) return;
+      const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+      const jpeg = format === "jpeg";
+      if (jpeg ? !["jpg", "jpeg"].includes(extension) : extension !== "png") {
+        throw new Error(`選んだ形式とファイル名の拡張子が一致しません（${jpeg ? "JPEG" : "PNG"}）`);
+      }
+      const output = jpeg ? document.createElement("canvas") : canvas;
+      if (jpeg) {
+        output.width = canvas.width;
+        output.height = canvas.height;
+        const context = output.getContext("2d");
+        if (!context) throw new Error("JPEGの合成に失敗しました");
+        context.fillStyle = "#000000";
+        context.fillRect(0, 0, output.width, output.height);
+        context.drawImage(canvas, 0, 0);
+      }
+      const blob = await new Promise<Blob>((resolve, reject) => output.toBlob(
+        (value) => value ? resolve(value) : reject(new Error("画像を書き出せませんでした")),
+        jpeg ? "image/jpeg" : "image/png", 0.92,
+      ));
+      sink = await ExportSink.open(path);
+      await sink.append(new Uint8Array(await blob.arrayBuffer()));
+      await sink.finish();
+      sink = null;
+    } catch (e) {
+      if (sink) await sink.abort(e);
+      showError(String(e));
+    } finally {
+      setScreenshotExporting(false);
+    }
   };
 
   /** Seek the shared <video> and store together (playhead + track clicks). */
@@ -236,6 +301,7 @@ export function EditorApp() {
             <RecordingsLibrary
               currentProjectId={projectId}
               onOpenProject={(id) => void openProject(id)}
+              onOpenScreenshot={(id) => void openScreenshot(id)}
             />
           </div>
         </div>
@@ -243,7 +309,7 @@ export function EditorApp() {
     );
   }
 
-  const windowTitle = project?.title?.trim() || t("app.untitled");
+  const windowTitle = project?.title?.trim() || (screenshotId ? "Screenshot" : t("app.untitled"));
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -253,11 +319,11 @@ export function EditorApp() {
           renameSeed={project?.title?.trim() ?? ""}
           onRename={renameTitle}
           exportError={exportError}
-          exporting={exporting}
+          exporting={exporting || screenshotExporting}
           exportDisabled={kept <= 0}
           showExport
           showPresets
-          onExport={() => setExportOpen(true)}
+          onExport={() => screenshotId ? setScreenshotExportOpen(true) : setExportOpen(true)}
         />
         {/* Top row: inspector rail + preview share the height above the timeline. */}
         <div className="flex min-h-0 flex-1">
@@ -265,9 +331,11 @@ export function EditorApp() {
             activePanel={inspectorPanel}
             onPanelChange={setInspectorPanel}
             hasFaceCam={!!cameraUrl}
+            isScreenshot={!!screenshotId}
             onOpenRecordings={openRecordings}
           >
             <LookPanel visible={inspectorPanel === "look"} />
+            {screenshotId && <ScreenshotToolsPanel visible={inspectorPanel === "image"} />}
             <CursorPanel visible={inspectorPanel === "cursor"} />
             <CameraPanel visible={inspectorPanel === "camera"} />
             <ZoomPanel
@@ -291,7 +359,7 @@ export function EditorApp() {
                   {t("app.loading")}
                 </p>
               ) : (
-                <PreviewStage videoRef={videoRef} />
+                <PreviewStage videoRef={videoRef} screenshotFrameRef={screenshotFrameRef} />
               )}
             </main>
           </div>
@@ -304,7 +372,7 @@ export function EditorApp() {
           </div>
         )}
 
-        <ExportSettingsDialog
+        {!screenshotId && <ExportSettingsDialog
           open={exportOpen}
           onOpenChange={setExportOpen}
           stageWidth={stage.width}
@@ -312,7 +380,26 @@ export function EditorApp() {
           sourceFps={project?.capture?.fps ?? null}
           exporting={exporting}
           onConfirm={runExport}
-        />
+        />}
+        <Dialog open={screenshotExportOpen} onOpenChange={setScreenshotExportOpen}>
+          <DialogContent className="gap-5 border-border bg-card p-5 sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>画像を書き出す</DialogTitle>
+              <DialogDescription>保存する画像形式を選んでください。</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-2">
+              {(["png", "jpeg"] as const).map((format) => (
+                <Button key={format} type="button" variant={screenshotFormat === format ? "default" : "outline"}
+                  aria-pressed={screenshotFormat === format} onClick={() => setScreenshotFormat(format)}>
+                  {format === "png" ? "PNG" : "JPEG"}
+                </Button>
+              ))}
+            </div>
+            <Button type="button" onClick={() => { setScreenshotExportOpen(false); void exportScreenshot(screenshotFormat); }}>
+              保存先を選ぶ
+            </Button>
+          </DialogContent>
+        </Dialog>
         <ExportProgressOverlay />
       </div>
     </TooltipProvider>

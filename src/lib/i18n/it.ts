@@ -19,6 +19,8 @@ export const it: Record<TranslationKey, string> = {
 
   "panel.look.title": "Aspetto",
   "panel.look.subtitle": "Sfondo e composizione",
+  "panel.image.title": "Immagine",
+  "panel.image.subtitle": "Annotazioni sull'immagine originale",
   "panel.cursor.title": "Cursore",
   "panel.cursor.subtitle": "Stile e movimento del puntatore",
   "panel.camera.title": "Webcam",
@@ -361,6 +363,8 @@ export const it: Record<TranslationKey, string> = {
   "recorder.recordings": "Registrazioni",
   "recorder.close": "Chiudi",
   "recorder.record": "Registra",
+  "recorder.screenshot": "Schermata",
+  "recorder.captureKind": "Tipo di acquisizione",
   "recorder.mode.display": "Schermo",
   "recorder.mode.window": "Finestra",
   "recorder.mode.area": "Area",

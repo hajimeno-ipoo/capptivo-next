@@ -39,7 +39,7 @@ export function unregisterDecodedFrameSource(element: HTMLVideoElement): void {
  * the element itself when it is a real one.
  */
 export function decodedImageFor(
-  media: HTMLVideoElement | null | undefined,
+  media: HTMLVideoElement | HTMLCanvasElement | null | undefined,
 ): DecodedImage | null {
   if (!media) return null;
   const provider = providers.get(media);

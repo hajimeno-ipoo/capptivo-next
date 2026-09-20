@@ -8,11 +8,12 @@ import { TimelineResizePill, type TimelineResizeEdge } from "./TimelineResizePil
 type Props = {
   segment: TrimSegment;
   selected: boolean;
+  resizable?: boolean;
   onResizePointerDown: (edge: TimelineResizeEdge, e: React.PointerEvent) => void;
 };
 
 /** Primary kept-video clip on the standard timeline track. */
-export function VideoTimelineBlock({ segment, selected, onResizePointerDown }: Props) {
+export function VideoTimelineBlock({ segment, selected, resizable = true, onResizePointerDown }: Props) {
   const { t } = useI18n();
   const range = `${formatTimelineTime(segment.start)}–${formatTimelineTime(segment.end)}`;
 
@@ -26,18 +27,22 @@ export function VideoTimelineBlock({ segment, selected, onResizePointerDown }: P
       )}
       title={range}
     >
-      <TimelineResizePill
-        edge="start"
-        hoverGroup="clip"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("start", e)}
-      />
-      <TimelineResizePill
-        edge="end"
-        hoverGroup="clip"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("end", e)}
-      />
+      {resizable && (
+        <>
+          <TimelineResizePill
+            edge="start"
+            hoverGroup="clip"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("start", e)}
+          />
+          <TimelineResizePill
+            edge="end"
+            hoverGroup="clip"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("end", e)}
+          />
+        </>
+      )}
       <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-white select-none">
         <div className="flex items-center gap-1">
           <Clapperboard className="size-3.5 shrink-0" strokeWidth={2.25} aria-hidden />

@@ -37,11 +37,11 @@ mod sck_window;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 pub(crate) mod window_prepare;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
-pub(crate) use window_prepare::prepare_for_capture;
+pub(crate) use window_prepare::{prepare_for_capture, prepare_for_screenshot};
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 mod scap_backend;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
-mod source_preview;
+pub(crate) mod source_preview;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 mod system_audio;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]

@@ -31,7 +31,7 @@ export interface LookState extends PerspectiveLook {
 export interface RenderFrameInputs {
   width: number;
   height: number;
-  video: HTMLVideoElement | null;
+  video: HTMLVideoElement | HTMLCanvasElement | null;
   /** Optional face-cam track composited on top of the screen recording. */
   cameraVideo?: HTMLVideoElement | null;
   faceCam?: FaceCamParams;
@@ -66,6 +66,8 @@ export interface RenderFrameInputs {
   /** Composition context for layout rules. */
   aspectRatioPresetId?: AspectRatioPresetId;
   backgroundType?: "image" | "gradient" | "color";
+  /** Still images may inset the original even with a plain-color backdrop. */
+  forcePaddingOnMatch?: boolean;
   sourceVideoSize?: { width: number; height: number } | null;
 }
 

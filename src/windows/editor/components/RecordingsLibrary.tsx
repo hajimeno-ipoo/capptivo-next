@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { commands } from "@/ipc/bindings";
-import type { ProjectSummary } from "@/ipc/types";
+import type { ProjectSummary, ScreenshotSummary } from "@/ipc/types";
 import { useI18n } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { mediaUrl } from "../store";
@@ -28,18 +28,20 @@ function formatCreatedAt(iso: string): string {
   }).format(d);
 }
 
-function displayTitle(p: ProjectSummary): string {
-  return p.title?.trim() || "Untitled recording";
+type LibraryItem = (ProjectSummary & { kind: "video" }) | (ScreenshotSummary & { kind: "screenshot" });
+
+function displayTitle(p: LibraryItem): string {
+  return p.title?.trim() || (p.kind === "screenshot" ? "Screenshot" : "Untitled recording");
 }
 
-function matchesNameFilter(project: ProjectSummary, query: string): boolean {
+function matchesNameFilter(project: LibraryItem, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   return displayTitle(project).toLowerCase().includes(needle);
 }
 
 /** Poster from `thumbnail.jpg` only — backfill once if the file is missing. */
-function RecordingThumb({ projectId, thumbnail }: { projectId: string; thumbnail: string | null }) {
+function RecordingThumb({ projectId, thumbnail, screenshot }: { projectId: string; thumbnail: string | null; screenshot: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [file, setFile] = useState<string | null>(thumbnail);
   const [failed, setFailed] = useState(false);
@@ -50,7 +52,7 @@ function RecordingThumb({ projectId, thumbnail }: { projectId: string; thumbnail
   }, [projectId, thumbnail]);
 
   useEffect(() => {
-    if (file || failed) return;
+    if (file || failed || screenshot) return;
     const host = hostRef.current;
     if (!host) return;
 
@@ -76,7 +78,7 @@ function RecordingThumb({ projectId, thumbnail }: { projectId: string; thumbnail
       cancelled = true;
       io.disconnect();
     };
-  }, [projectId, file, failed]);
+  }, [projectId, file, failed, screenshot]);
 
   return (
     <div ref={hostRef} className="aspect-video w-full overflow-hidden bg-secondary">
@@ -100,11 +102,12 @@ function RecordingThumb({ projectId, thumbnail }: { projectId: string; thumbnail
 type RecordingsLibraryProps = {
   currentProjectId: string | null;
   onOpenProject: (id: string) => void;
+  onOpenScreenshot: (id: string) => void;
 };
 
-export function RecordingsLibrary({ currentProjectId, onOpenProject }: RecordingsLibraryProps) {
+export function RecordingsLibrary({ currentProjectId, onOpenProject, onOpenScreenshot }: RecordingsLibraryProps) {
   const { t } = useI18n();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projects, setProjects] = useState<LibraryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState("");
@@ -129,7 +132,11 @@ export function RecordingsLibrary({ currentProjectId, onOpenProject }: Recording
 
   const refresh = useCallback(async () => {
     try {
-      const list = await commands.listProjects();
+      const [videos, screenshots] = await Promise.all([commands.listProjects(), commands.listScreenshots()]);
+      const list: LibraryItem[] = [
+        ...videos.map((p) => ({ ...p, kind: "video" as const })),
+        ...screenshots.map((p) => ({ ...p, kind: "screenshot" as const })),
+      ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       startTransition(() => {
         setProjects(list);
         setError(null);
@@ -161,9 +168,9 @@ export function RecordingsLibrary({ currentProjectId, onOpenProject }: Recording
   return (
     <div className="flex min-h-full flex-col bg-background text-foreground">
       <header className="mx-auto w-full max-w-6xl shrink-0 px-8 pb-2 pt-10">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Recordings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Library</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your videos stay on this device. Click a recording to open the editor.
+          Your recordings and screenshots stay on this device. Click one to edit it.
         </p>
       </header>
 
@@ -242,22 +249,23 @@ export function RecordingsLibrary({ currentProjectId, onOpenProject }: Recording
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onOpenProject(p.id)}
+                      onClick={() => p.kind === "screenshot" ? onOpenScreenshot(p.id) : onOpenProject(p.id)}
                       className="block w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <RecordingThumb projectId={p.id} thumbnail={p.thumbnail} />
+                      <RecordingThumb projectId={p.id} thumbnail={p.thumbnail} screenshot={p.kind === "screenshot"} />
                     </button>
 
                     <div className="flex items-start gap-2 px-3.5 py-3">
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => onOpenProject(p.id)}
+                        onClick={() => p.kind === "screenshot" ? onOpenScreenshot(p.id) : onOpenProject(p.id)}
                         className="min-w-0 flex-1 cursor-pointer text-left outline-none disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span className="block truncate text-sm font-medium text-foreground">
                           {title}
                         </span>
+                        <span className="text-[10px] text-muted-foreground">{p.kind === "screenshot" ? "Screenshot" : "Video"}</span>
                         <span className="mt-1 block truncate text-xs text-muted-foreground">
                           {formatCreatedAt(p.createdAt)}
                         </span>

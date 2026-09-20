@@ -19,6 +19,8 @@ export const ja: Record<TranslationKey, string> = {
 
   "panel.look.title": "外観",
   "panel.look.subtitle": "背景と構図",
+  "panel.image.title": "画像",
+  "panel.image.subtitle": "元画像の注釈を編集",
   "panel.cursor.title": "カーソル",
   "panel.cursor.subtitle": "ポインタのスタイルと動き",
   "panel.camera.title": "フェイスカム",
@@ -354,6 +356,8 @@ export const ja: Record<TranslationKey, string> = {
   "recorder.recordings": "録画",
   "recorder.close": "閉じる",
   "recorder.record": "録画",
+  "recorder.screenshot": "スクショ",
+  "recorder.captureKind": "撮影の種類",
   "recorder.mode.display": "ディスプレイ",
   "recorder.mode.window": "ウィンドウ",
   "recorder.mode.area": "範囲",

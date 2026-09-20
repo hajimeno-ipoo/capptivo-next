@@ -125,6 +125,9 @@ pub fn start_recording(
     state: State<AppState>,
     config: RecorderConfig,
 ) -> AppResult<()> {
+    if state.screenshot_busy.load(std::sync::atomic::Ordering::Acquire) {
+        return Err(AppError::Busy("screenshot".into()));
+    }
     if state.current_project.lock().is_some() {
         return Err(AppError::Busy("recording".into()));
     }

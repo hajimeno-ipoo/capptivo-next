@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   MousePointer2,
+  Image as ImageIcon,
   Settings,
   Video,
   Wallpaper,
@@ -18,9 +19,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/settings";
 import type { TranslationKey } from "@/lib/i18n";
+import { supportsEditorFeature, type EditorFeature } from "../lib/editorMode";
 
 export const INSPECTOR_PANEL_IDS = [
   "look",
+  "image",
   "cursor",
   "camera",
   "zoom",
@@ -38,6 +41,11 @@ const PANEL_META: Record<
     icon: Wallpaper,
     titleKey: "panel.look.title",
     subtitleKey: "panel.look.subtitle",
+  },
+  image: {
+    icon: ImageIcon,
+    titleKey: "panel.image.title",
+    subtitleKey: "panel.image.subtitle",
   },
   cursor: {
     icon: MousePointer2,
@@ -66,11 +74,19 @@ const PANEL_META: Record<
   },
 };
 
+const MODE_FEATURE_BY_PANEL: Partial<Record<InspectorPanelId, EditorFeature>> = {
+  image: "image-tools",
+  cursor: "cursor",
+  camera: "camera",
+  captions: "captions",
+};
+
 type InspectorChromeProps = {
   activePanel: InspectorPanelId;
   onPanelChange: (id: InspectorPanelId) => void;
   /** When false, the Face cam rail item is disabled. */
   hasFaceCam?: boolean;
+  isScreenshot?: boolean;
   /** Capptivo logo — switch this window to the recordings library. */
   onOpenRecordings: () => void;
   /** Scrollable body for the active panel only. */
@@ -84,6 +100,7 @@ export function InspectorChrome({
   activePanel,
   onPanelChange,
   hasFaceCam = false,
+  isScreenshot = false,
   onOpenRecordings,
   children,
 }: InspectorChromeProps) {
@@ -120,8 +137,11 @@ export function InspectorChrome({
             const meta = PANEL_META[id];
             const Icon = meta.icon;
             const isActive = activePanel === id;
-            const disabled = id === "camera" && !hasFaceCam;
-            const title = disabled
+            const modeFeature = MODE_FEATURE_BY_PANEL[id];
+            const disabled = (modeFeature != null
+              && !supportsEditorFeature(isScreenshot ? "screenshot" : "video", modeFeature))
+              || (id === "camera" && !hasFaceCam);
+            const title = id === "camera" && !isScreenshot && !hasFaceCam
               ? t("panel.camera.disabled")
               : t(meta.titleKey);
 

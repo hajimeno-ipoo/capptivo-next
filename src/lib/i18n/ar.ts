@@ -19,6 +19,8 @@ export const ar: Record<TranslationKey, string> = {
 
   "panel.look.title": "المظهر",
   "panel.look.subtitle": "الخلفية والتركيب",
+  "panel.image.title": "صورة",
+  "panel.image.subtitle": "تعديل التعليقات على الصورة الأصلية",
   "panel.cursor.title": "المؤشر",
   "panel.cursor.subtitle": "نمط المؤشر وحركته",
   "panel.camera.title": "الكاميرا",
@@ -355,6 +357,8 @@ export const ar: Record<TranslationKey, string> = {
   "recorder.recordings": "التسجيلات",
   "recorder.close": "إغلاق",
   "recorder.record": "تسجيل",
+  "recorder.screenshot": "لقطة شاشة",
+  "recorder.captureKind": "نوع الالتقاط",
   "recorder.mode.display": "شاشة",
   "recorder.mode.window": "نافذة",
   "recorder.mode.area": "منطقة",

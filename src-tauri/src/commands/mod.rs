@@ -9,6 +9,7 @@ pub mod export;
 pub mod fonts;
 pub mod project;
 pub mod recording;
+pub mod screenshot;
 
 /// The full invoke handler. Referenced from `lib.rs`. Adding a command means
 /// adding it here, to `COMMANDS` in `build.rs`, and to the matching capability
@@ -35,6 +36,11 @@ macro_rules! command_handlers {
             $crate::commands::recording::resume_recording,
             $crate::commands::recording::set_recording_mic_muted,
             $crate::commands::recording::stop_recording,
+            $crate::commands::screenshot::capture_screenshot,
+            $crate::commands::screenshot::list_screenshots,
+            $crate::commands::screenshot::load_screenshot,
+            $crate::commands::screenshot::save_screenshot_state,
+            $crate::commands::screenshot::rename_screenshot,
             $crate::commands::recording::pick_capture_area,
             $crate::commands::recording::complete_area_pick,
             $crate::commands::recording::cancel_area_pick,
@@ -64,6 +70,7 @@ macro_rules! command_handlers {
             $crate::windows::set_annotation_display_follow,
             $crate::windows::open_library,
             $crate::windows::open_editor,
+            $crate::windows::open_screenshot_editor,
             $crate::windows::present_window,
             $crate::commands::captions::get_whisper_model_status,
             $crate::commands::captions::download_whisper_model,

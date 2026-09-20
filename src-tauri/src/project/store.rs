@@ -3,12 +3,15 @@
 //! atomic (write `.tmp`, fsync, rename) so a crash never corrupts a project.
 
 use super::model::{
-    CaptureSnapshot, Meta, Project, ProjectFiles, ProjectSummary, SCHEMA_VERSION,
+    CaptureSnapshot, Meta, Project, ProjectFiles, ProjectSummary, ScreenshotProject,
+    ScreenshotSummary, SCHEMA_VERSION,
 };
 use crate::cursor::CursorTrack;
 use crate::error::{AppError, AppResult};
 use crate::recorder::types::RecorderConfig;
 use crate::recorder::RecordingArtifacts;
+use crate::recorder::encoder::ffmpeg_path;
+use crate::proc;
 use parking_lot::Mutex;
 use std::fs;
 use std::io::Write;
@@ -17,9 +20,14 @@ use std::path::{Path, PathBuf};
 /// The per-project manifest. [`write_json_atomic`] stages it through
 /// `project.tmp`, which is why concurrent writers must share `manifest_write`.
 const PROJECT_FILE: &str = "project.json";
+const SCREENSHOT_FILE: &str = "screenshot.json";
+const SCREENSHOT_ORIGINAL: &str = "original.png";
+const SCREENSHOT_THUMBNAIL: &str = "thumbnail.jpg";
+const SCREENSHOT_TIMELINE_VIDEO: &str = "screen.mp4";
 
 pub struct ProjectStore {
     root: PathBuf,
+    screenshot_video_write: Mutex<()>,
     /// Serializes the read-modify-write sequences on `project.json`.
     ///
     /// `save_editor_state`, `rename` and `ensure_thumbnail` each load the
@@ -44,6 +52,7 @@ impl ProjectStore {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
+            screenshot_video_write: Mutex::new(()),
             manifest_write: Mutex::new(()),
         }
     }
@@ -79,6 +88,109 @@ impl ProjectStore {
         let dir = self.dir_for(&id)?;
         fs::create_dir_all(&dir)?;
         Ok((id, dir))
+    }
+
+    pub fn create_screenshot(&self, png: &[u8], source_title: String) -> AppResult<ScreenshotProject> {
+        let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+            .map_err(|e| AppError::Project(format!("invalid screenshot: {e}")))?;
+        let (width, height) = (image.width(), image.height());
+        if width == 0 || height == 0 { return Err(AppError::Project("empty screenshot".into())); }
+        let (id, dir) = self.create()?;
+        let result = (|| {
+            let temp = dir.join("original.tmp");
+            let mut file = fs::File::create(&temp)?;
+            file.write_all(png)?;
+            file.sync_all()?;
+            fs::rename(&temp, dir.join(SCREENSHOT_ORIGINAL))?;
+            let thumb = image.thumbnail(480, 480).to_rgb8();
+            let thumb_temp = dir.join("thumbnail.tmp");
+            image::DynamicImage::ImageRgb8(thumb)
+                .save_with_format(&thumb_temp, image::ImageFormat::Jpeg)
+                .map_err(|e| AppError::Project(format!("screenshot thumbnail: {e}")))?;
+            fs::rename(&thumb_temp, dir.join(SCREENSHOT_THUMBNAIL))?;
+            let project = ScreenshotProject {
+                schema_version: 1, id, title: None, created_at: now_rfc3339(),
+                source_title, width, height, original: SCREENSHOT_ORIGINAL.into(),
+                editor_state: None,
+            };
+            write_json_atomic(&dir.join(SCREENSHOT_FILE), &project)?;
+            Ok(project)
+        })();
+        if result.is_err() { let _ = fs::remove_dir_all(&dir); }
+        result
+    }
+
+    pub fn load_screenshot(&self, id: &str) -> AppResult<ScreenshotProject> {
+        let dir = self.dir_for(id)?;
+        let project: ScreenshotProject = serde_json::from_slice(&fs::read(dir.join(SCREENSHOT_FILE))?)?;
+        if project.schema_version != 1 || project.id != id || project.original != SCREENSHOT_ORIGINAL
+            || !dir.join(SCREENSHOT_ORIGINAL).is_file() {
+            return Err(AppError::Project("invalid screenshot project".into()));
+        }
+        Ok(project)
+    }
+
+    /// A still image needs a seekable clock for the existing video timeline and
+    /// inspector previews. This file is disposable: original.png remains the
+    /// authoritative source for image rendering and export.
+    fn ensure_screenshot_timeline_video(&self, id: &str) -> AppResult<()> {
+        let dir = self.dir_for(id)?;
+        let output = dir.join(SCREENSHOT_TIMELINE_VIDEO);
+        if output.is_file() { return Ok(()); }
+        let _guard = self.screenshot_video_write.lock();
+        if output.is_file() { return Ok(()); }
+        let temp = dir.join("screen.tmp.mp4");
+        let threads = proc::encode_thread_cap().to_string();
+        let result = proc::background_command(ffmpeg_path())
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-threads", &threads,
+                "-loop", "1", "-framerate", "30"])
+            .arg("-i").arg(dir.join(SCREENSHOT_ORIGINAL))
+            .args(["-t", "5", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "12",
+                "-movflags", "+faststart"])
+            .arg(&temp)
+            .output()
+            .map_err(|e| AppError::Project(format!("screenshot timeline video: {e}")))?;
+        if !result.status.success() {
+            let _ = fs::remove_file(&temp);
+            return Err(AppError::Project(format!(
+                "screenshot timeline video: {}", proc::summarize_stderr(&result.stderr)
+            )));
+        }
+        fs::rename(&temp, output)?;
+        Ok(())
+    }
+
+    pub fn list_screenshots(&self) -> AppResult<Vec<ScreenshotSummary>> {
+        let root = self.projects_dir();
+        if !root.is_dir() { return Ok(Vec::new()); }
+        let mut items = Vec::new();
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() { continue; }
+            let Some(id) = entry.file_name().to_str().map(str::to_string) else { continue; };
+            let Ok(project) = self.load_screenshot(&id) else { continue; };
+            items.push(ScreenshotSummary {
+                id: project.id, title: project.title, created_at: project.created_at,
+                thumbnail: SCREENSHOT_THUMBNAIL.into(),
+            });
+        }
+        items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(items)
+    }
+
+    pub fn save_screenshot_state(&self, id: &str, editor_state: serde_json::Value) -> AppResult<()> {
+        let _guard = self.manifest_write.lock();
+        let mut project = self.load_screenshot(id)?;
+        project.editor_state = Some(editor_state);
+        write_json_atomic(&self.dir_for(id)?.join(SCREENSHOT_FILE), &project)
+    }
+
+    pub fn rename_screenshot(&self, id: &str, title: Option<String>) -> AppResult<()> {
+        let _guard = self.manifest_write.lock();
+        let mut project = self.load_screenshot(id)?;
+        project.title = title;
+        write_json_atomic(&self.dir_for(id)?.join(SCREENSHOT_FILE), &project)
     }
 
     /// Minimal `project.json` written at record-start so the editor can open while
@@ -192,6 +304,31 @@ impl ProjectStore {
 
     pub fn load(&self, id: &str) -> AppResult<Project> {
         let path = self.dir_for(id)?.join(PROJECT_FILE);
+        if !path.is_file() {
+            let screenshot = self.load_screenshot(id)?;
+            self.ensure_screenshot_timeline_video(id)?;
+            return Ok(Project {
+                schema_version: SCHEMA_VERSION,
+                id: screenshot.id,
+                title: screenshot.title,
+                created_at: screenshot.created_at,
+                capture: CaptureSnapshot {
+                    source_title: screenshot.source_title,
+                    fps: 30,
+                    captured_system_audio: false,
+                    // The cursor, if present, is already part of original.png.
+                    shows_system_cursor: true,
+                },
+                files: ProjectFiles {
+                    screen: SCREENSHOT_TIMELINE_VIDEO.into(),
+                    camera: None,
+                    cursor: None,
+                    meta: "meta.json".into(),
+                    thumbnail: Some(SCREENSHOT_THUMBNAIL.into()),
+                },
+                editor_state: screenshot.editor_state,
+            });
+        }
         let bytes = fs::read(&path).map_err(|e| {
             AppError::Project(format!("cannot read project {id}: {e}"))
         })?;
@@ -215,10 +352,16 @@ impl ProjectStore {
     }
 
     pub fn save_editor_state(&self, id: &str, state: serde_json::Value) -> AppResult<()> {
+        if self.dir_for(id)?.join(SCREENSHOT_FILE).is_file() {
+            return self.save_screenshot_state(id, state);
+        }
         self.update_project(id, move |project| project.editor_state = Some(state))
     }
 
     pub fn rename(&self, id: &str, title: Option<String>) -> AppResult<()> {
+        if self.dir_for(id)?.join(SCREENSHOT_FILE).is_file() {
+            return self.rename_screenshot(id, title);
+        }
         self.update_project(id, move |project| project.title = title)
     }
 
@@ -283,6 +426,10 @@ impl ProjectStore {
             let Ok(dir) = self.dir_for(&id) else {
                 continue;
             };
+            // Screenshot projects are listed separately with their image kind.
+            if dir.join(SCREENSHOT_FILE).is_file() {
+                continue;
+            }
             // Skip half-written projects (no manifest yet).
             let Ok(project) = self.load(&id) else {
                 continue;
@@ -311,6 +458,10 @@ impl ProjectStore {
     /// The original recording's pixel dimensions (from `meta.json`). Authoritative
     /// for export sizing — the editor must not derive these from a preview proxy.
     pub fn recording_size(&self, id: &str) -> AppResult<(u32, u32)> {
+        if self.dir_for(id)?.join(SCREENSHOT_FILE).is_file() {
+            let image = self.load_screenshot(id)?;
+            return Ok((image.width, image.height));
+        }
         let meta = self.read_meta(id)?;
         Ok((meta.width, meta.height))
     }
@@ -416,6 +567,30 @@ mod tests {
     use super::*;
     use crate::recorder::types::{QualityPreset, RecorderConfig};
     use std::sync::Arc;
+
+    #[test]
+    fn screenshot_round_trip_keeps_original_and_edits_separate() {
+        let root = std::env::temp_dir().join(format!("capptivo-shot-test-{}", uuid::Uuid::new_v4()));
+        let store = ProjectStore::new(root.clone());
+        let png = {
+            let image = image::RgbaImage::from_pixel(8, 6, image::Rgba([12, 34, 56, 255]));
+            let mut bytes = Vec::new();
+            image.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png).unwrap();
+            bytes
+        };
+        let project = store.create_screenshot(&png, "display:1".into()).unwrap();
+        assert_eq!((project.width, project.height), (8, 6));
+        assert_eq!(store.list_screenshots().unwrap().len(), 1);
+        store.save_screenshot_state(&project.id, serde_json::json!({"marks": [1]})).unwrap();
+        store.rename_screenshot(&project.id, Some("Still".into())).unwrap();
+        let loaded = store.load_screenshot(&project.id).unwrap();
+        assert_eq!(loaded.title.as_deref(), Some("Still"));
+        assert_eq!(loaded.editor_state, Some(serde_json::json!({"marks": [1]})));
+        assert_eq!(fs::read(store.project_dir(&project.id).unwrap().join("original.png")).unwrap(), png);
+        assert!(store.project_dir(&project.id).unwrap().join("thumbnail.jpg").is_file());
+        store.delete(&project.id).unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
 
     /// A store rooted in a fresh temp directory, plus one project with a
     /// manifest already on disk. The caller deletes `root` when done.

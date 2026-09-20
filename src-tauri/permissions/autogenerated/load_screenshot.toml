@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-screenshot"
+description = "Enables the load_screenshot command without any pre-configured scope."
+commands.allow = ["load_screenshot"]
+
+[[permission]]
+identifier = "deny-load-screenshot"
+description = "Denies the load_screenshot command without any pre-configured scope."
+commands.deny = ["load_screenshot"]

@@ -563,7 +563,8 @@ fn present_area_frame(
         scale,
         "area frame guide shown"
     );
-    let _ = win.show();
+    win.show()
+        .map_err(|e| AppError::Other(format!("area frame could not be shown: {e}")))?;
     // Last word on focus must be the recorder bar, not the guide: `show()` above
     // activates the guide on every reuse (tao clears a window's don't-focus
     // marker after the first show), and the bar's Escape-to-cancel handler is a

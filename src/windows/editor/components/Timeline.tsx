@@ -33,6 +33,7 @@ import { useI18n } from "@/lib/settings";
 import type { TranslationKey } from "@/lib/i18n";
 
 import { cn } from "../lib/cn";
+import { supportsEditorFeature } from "../lib/editorMode";
 import { ASPECT_RATIO_PRESETS, type AspectRatioPresetId } from "../lib/composition";
 import { formatTimelineTime, MIN_SEGMENT_LENGTH } from "../lib/timelineMath";
 import { buildTimelineRuler } from "../lib/timelineRuler";
@@ -147,6 +148,9 @@ export function Timeline({
 }) {
   const { t } = useI18n();
   const duration = useEditorStore((s) => s.duration);
+  const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
+  const speedEnabled = supportsEditorFeature(isScreenshot ? "screenshot" : "video", "speed");
+  const sourceTrimEnabled = supportsEditorFeature(isScreenshot ? "screenshot" : "video", "source-trim");
   const segments = useEditorStore((s) => s.segments);
   const zoomFragments = useEditorStore((s) => s.zoomFragments);
   const perspectiveFragments = useEditorStore((s) => s.perspectiveFragments);
@@ -304,14 +308,14 @@ export function Timeline({
   );
 
   const selectedExists =
-    selectedGapIndex !== null ||
-    (!!selectedSegmentId && segments.some((segment) => segment.id === selectedSegmentId)) ||
+    (sourceTrimEnabled && selectedGapIndex !== null) ||
+    (sourceTrimEnabled && !!selectedSegmentId && segments.some((segment) => segment.id === selectedSegmentId)) ||
     (!!selectedZoomFragmentId &&
       zoomFragments.some((f) => f.id === selectedZoomFragmentId)) ||
     (!!selectedPerspectiveFragmentId &&
       perspectiveFragments.some((f) => f.id === selectedPerspectiveFragmentId)) ||
     (!!selectedBlurRegionId && blurRegions.some((region) => region.id === selectedBlurRegionId)) ||
-    (!!selectedSpeedRangeId && speedRanges.some((range) => range.id === selectedSpeedRangeId)) ||
+    (speedEnabled && !!selectedSpeedRangeId && speedRanges.some((range) => range.id === selectedSpeedRangeId)) ||
     (!!selectedTextClipId && textClips.some((clip) => clip.id === selectedTextClipId));
 
   useEffect(() => {
@@ -781,7 +785,7 @@ export function Timeline({
                 <Focus className="size-4 text-muted-foreground" />
                 {t("blur.highlight")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addFragment("speed")}>
+              <DropdownMenuItem disabled={!speedEnabled} onClick={() => addFragment("speed")}>
                 <Gauge className="size-4 text-muted-foreground" />
                 {t("speed.addRange")}
               </DropdownMenuItem>
@@ -789,7 +793,7 @@ export function Timeline({
                 <Type className="size-4 text-muted-foreground" />
                 {t("text.add")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={cutAtPlayhead}>
+              <DropdownMenuItem disabled={!sourceTrimEnabled} onClick={cutAtPlayhead}>
                 <Scissors className="size-4 text-muted-foreground" />
                 {t("timeline.cut")}
               </DropdownMenuItem>
@@ -803,13 +807,13 @@ export function Timeline({
             aria-pressed={splitTool}
             title={splitTool ? t("timeline.split.on") : t("timeline.split.off")}
             onClick={() => setSplitTool((v) => !v)}
-            disabled={duration <= 0}
+            disabled={duration <= 0 || !sourceTrimEnabled}
             className={cn(
               "flex h-full items-center justify-center border-r border-border px-3.5 transition-colors",
               splitTool
                 ? "bg-background text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                 : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-              duration <= 0 && "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
+              (duration <= 0 || !sourceTrimEnabled) && "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
             )}
           >
             <Scissors className="size-4.5" strokeWidth={2} />
@@ -1023,7 +1027,7 @@ export function Timeline({
             style={{ top: HIGHLIGHT_TOP, height: LANE_H }}
           />
           <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/2"
+            className={cn("pointer-events-none absolute inset-x-0 bg-foreground/2", isScreenshot && "opacity-30")}
             style={{ top: SPEED_TOP, height: LANE_H }}
           />
           <div
@@ -1070,9 +1074,9 @@ export function Timeline({
               {t("blur.highlight")}
             </div>
           )}
-          {speedRanges.length === 0 && (
+          {(isScreenshot || speedRanges.length === 0) && (
             <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
+              className={cn("pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground", isScreenshot && "opacity-40")}
               style={{ top: SPEED_TOP, height: LANE_H }}
             >
               {t("export.gifSpeed")}
@@ -1087,7 +1091,7 @@ export function Timeline({
             </div>
           )}
 
-          {gaps.map((gap) => (
+          {sourceTrimEnabled && gaps.map((gap) => (
             <div
               key={`cut-${gap.start.toFixed(3)}-${gap.end.toFixed(3)}`}
               className="pointer-events-none absolute z-1 border-y border-dashed border-foreground/10 bg-background/35"
@@ -1107,7 +1111,10 @@ export function Timeline({
               <div
                 key={segment.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn(
+                  "absolute z-10",
+                  sourceTrimEnabled ? "cursor-pointer" : "cursor-default",
+                )}
                 style={{
                   top: CLIP_TOP + BLOCK_INSET,
                   height: BLOCK_H,
@@ -1116,6 +1123,7 @@ export function Timeline({
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!sourceTrimEnabled) return;
                   if (splitTool) {
                     if (splitAt({ kind: "trim", time: clientToTime(e.clientX) })) {
                       setSplitTool(false);
@@ -1128,6 +1136,7 @@ export function Timeline({
                 <VideoTimelineBlock
                   segment={segment}
                   selected={selected}
+                  resizable={sourceTrimEnabled}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "segment-edge", segmentId: segment.id, edge })
                   }
@@ -1291,7 +1300,7 @@ export function Timeline({
           })}
 
           {/* Variable-speed ranges */}
-          {speedRanges.map((range) => {
+          {speedEnabled && speedRanges.map((range) => {
             const selected = range.id === selectedSpeedRangeId;
             return (
               <div

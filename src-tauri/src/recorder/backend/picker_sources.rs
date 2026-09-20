@@ -14,10 +14,6 @@ use objc_id::ShareId;
 /// `kCGDockWindowLevel` — layers at/above this are Dock, menubar, etc.
 const DOCK_WINDOW_LAYER: u32 = 20;
 const MIN_WINDOW_SIDE: f64 = 96.0;
-/// Off-current-Space windows (fullscreen on another display) can report
-/// `isOnScreen == false`; require a substantial frame so minimized thumbs
-/// don't appear in the list.
-const OFFSPACE_MIN_SIDE: f64 = 400.0;
 
 /// Process-owned surfaces we never want in the picker.
 const BLOCKED_OWNER_BUNDLES: &[&str] = &[
@@ -126,48 +122,14 @@ pub fn display_for_window_frame(
 
 /// Windows a user would reasonably record — not desktop chrome or our own UI.
 pub fn recordable_windows() -> AppResult<Vec<PickerWindow>> {
-    let content = shareable_content()?;
+    let content = shareable_content_on_screen()?;
     let displays = content.displays();
     let own_pid = std::process::id() as i32;
 
-    let candidate_windows: Vec<_> = content
+    let mut windows: Vec<PickerWindow> = content
         .windows()
         .into_iter()
         .filter(|w| is_recordable_window(w, own_pid))
-        .collect();
-
-    // Identify apps (by PID and title) that already have a visible on-screen window.
-    // Apps like ChatGPT often have off-screen internal/helper windows sharing the
-    // same title and process ID. If an on-screen window exists for that app+title,
-    // we drop the off-screen internal ones so users aren't presented with unrecordable duplicates.
-    let mut on_screen_app_titles = std::collections::HashSet::new();
-    for w in &candidate_windows {
-        if w.get_is_on_screen() != 0 {
-            let pid = w
-                .get_owning_application()
-                .map(|o| o.get_process_id())
-                .unwrap_or(-1);
-            let title = w.get_title().unwrap_or_default();
-            on_screen_app_titles.insert((pid, title));
-        }
-    }
-
-    let mut windows: Vec<PickerWindow> = candidate_windows
-        .into_iter()
-        .filter(|w| {
-            let is_on_screen = w.get_is_on_screen() != 0;
-            if is_on_screen {
-                return true;
-            }
-            let pid = w
-                .get_owning_application()
-                .map(|o| o.get_process_id())
-                .unwrap_or(-1);
-            let title = w.get_title().unwrap_or_default();
-            // If there is an active on-screen window for this exact app+title,
-            // drop the off-screen sibling (which is almost certainly an un-recordable internal window).
-            !on_screen_app_titles.contains(&(pid, title))
-        })
         .map(|w| {
             let frame = w.get_frame();
             let rect = CaptureRect {
@@ -306,11 +268,7 @@ fn window_is_recordable(p: WindowProbe<'_>) -> bool {
     if !is_capturable_window_layer(p.layer) {
         return false;
     }
-    if p.is_on_screen {
-        return true;
-    }
-    // Fullscreen / other-Space windows SCK can still capture once selected.
-    p.width >= OFFSPACE_MIN_SIDE && p.height >= OFFSPACE_MIN_SIDE
+    p.is_on_screen
 }
 
 /// App windows sit below Dock (20). Fullscreen uses non-zero layers in this band.
@@ -402,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_offspace_large_fullscreen_window() {
+    fn rejects_offspace_large_fullscreen_window() {
         let p = WindowProbe {
             is_on_screen: false,
             layer: 1,
@@ -413,7 +371,7 @@ mod tests {
             own_pid: 1,
             owner_bundle: Some("com.apple.dt.Xcode"),
         };
-        assert!(window_is_recordable(p));
+        assert!(!window_is_recordable(p));
     }
 
     #[test]

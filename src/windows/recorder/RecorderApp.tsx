@@ -43,6 +43,7 @@ export function RecorderApp() {
   const lastError = useRecorderStore((s) => s.lastError);
   const setAnnotationVisible = useRecorderStore((s) => s.setAnnotationVisible);
   const start = useRecorderStore((s) => s.startRecording);
+  const captureScreenshot = useRecorderStore((s) => s.captureScreenshot);
   const prewarmCapture = useRecorderStore((s) => s.prewarmCapture);
   const [counting, setCounting] = useState(false);
   // The capture pipeline takes ~330ms to come up, and `status` only flips to
@@ -279,6 +280,7 @@ export function RecorderApp() {
             <BarPane active={!hudOn}>
               <RecorderToolbar
                 onRecord={onRecord}
+                onScreenshot={() => void captureScreenshot()}
                 onDragPreview={onDragPreview}
                 onDragCommit={onDragCommit}
               />

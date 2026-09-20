@@ -16,6 +16,7 @@ import type { TranslationKey } from "@/lib/i18n";
 
 import { useEditorStore } from "../store";
 import { cn } from "../lib/cn";
+import { supportsEditorFeature } from "../lib/editorMode";
 import { screenPreviewUrl } from "../lib/screenPreviewUrl";
 import { computePerspectiveCorners } from "../lib/perspectiveTransform";
 import {
@@ -56,6 +57,7 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
   const selectedBlurRegionId = useEditorStore((s) => s.selectedBlurRegionId);
   const duration = useEditorStore((s) => s.duration);
   const backgroundType = useEditorStore((s) => s.backgroundType);
+  const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
   const setBackgroundType = useEditorStore((s) => s.setBackgroundType);
   const selectedBackground = useEditorStore((s) => s.selectedBackground);
   const previewUrl = useEditorStore((s) =>
@@ -130,12 +132,12 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
         {backgroundType === "color" && <ColorGrid />}
       </div>
 
-      {selectedBackground && previewUrl && (
+      {previewUrl && (selectedBackground || isScreenshot) && (
         <ScreenContentCropPanel
           key="screen-content-crop"
           videoUrl={previewUrl}
           fileAspect={sourceAspect}
-          hasBackground
+          hasBackground={selectedBackground !== null || isScreenshot}
           value={screenContentCrop}
           onChange={setScreenContentCrop}
           seekTo={cropPreviewTime}
@@ -178,6 +180,8 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
 
 function SpeedControls() {
   const { t } = useI18n();
+  const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
+  const speedEnabled = supportsEditorFeature(isScreenshot ? "screenshot" : "video", "speed");
   const speed = useEditorStore((s) => s.globalSpeed);
   const ranges = useEditorStore((s) => s.speedRanges);
   const selectedId = useEditorStore((s) => s.selectedSpeedRangeId);
@@ -188,7 +192,7 @@ function SpeedControls() {
   const autoSpeedTyping = useEditorStore((s) => s.autoSpeedTyping);
 
   return (
-    <section className="space-y-3">
+    <section className={cn("space-y-3", !speedEnabled && "opacity-40")} aria-disabled={!speedEnabled}>
       <SectionLabel>{t("export.gifSpeed")}</SectionLabel>
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -197,6 +201,7 @@ function SpeedControls() {
         </div>
         <Slider
           min={0.25}
+          disabled={!speedEnabled}
           max={4}
           step={0.05}
           value={[speed]}
@@ -204,10 +209,10 @@ function SpeedControls() {
         />
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={() => addSpeedRange()}>
+        <Button type="button" size="sm" variant="secondary" disabled={!speedEnabled} onClick={() => addSpeedRange()}>
           {t("speed.addRange")}
         </Button>
-        <Button type="button" size="sm" variant="secondary" onClick={autoSpeedTyping}>
+        <Button type="button" size="sm" variant="secondary" disabled={!speedEnabled} onClick={autoSpeedTyping}>
           {t("speed.autoTyping")}
         </Button>
       </div>
@@ -219,6 +224,7 @@ function SpeedControls() {
           </div>
           <Slider
             min={0.25}
+            disabled={!speedEnabled}
             max={4}
             step={0.05}
             value={[selected.rate]}

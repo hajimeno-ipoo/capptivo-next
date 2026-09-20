@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type RefObject,
+  type MutableRefObject,
 } from "react";
 import {
   computeCursorLoopReturn,
@@ -66,19 +67,72 @@ import {
   probeMediaSize,
 } from "../lib/mediaBlobUrl";
 import { useI18n } from "@/lib/settings";
+import { mediaUrl } from "@/lib/platform";
+import { toBlobMediaUrl } from "../lib/mediaBlobUrl";
+import { DEFAULT_SCREENSHOT_EDITS, drawScreenshotMarks, screenshotStage } from "../screenshotModel";
 
 /** The hidden <video> lives here but is owned by the parent so the full-width
  *  timeline (a sibling, not a child) can seek it too. */
 export function PreviewStage({
   videoRef,
+  screenshotFrameRef,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
+  screenshotFrameRef?: MutableRefObject<(() => HTMLCanvasElement | null) | null>;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   /** Requests a single paused-state repaint; assigned by the render effect. */
   const requestPaintRef = useRef<() => void>(() => {});
   const compositorRef = useRef<FrameCompositor | null>(null);
+  const screenshotSourceRef = useRef<HTMLCanvasElement | null>(null);
+  const screenshotImageRef = useRef<HTMLImageElement | null>(null);
+  const screenshotId = useEditorStore((s) => s.screenshotId);
+  const screenshotMarks = useEditorStore((s) => s.screenshotMarks);
+  const screenshotSourceSize = useEditorStore((s) => s.sourceVideoSize);
+
+  useEffect(() => {
+    screenshotSourceRef.current = null;
+    screenshotImageRef.current = null;
+    if (!screenshotId) return;
+    let cancelled = false;
+    let revoke: (() => void) | null = null;
+    void (async () => {
+      try {
+        const blob = await toBlobMediaUrl(mediaUrl(screenshotId, "original.png"));
+        revoke = blob.revoke;
+        const image = new Image();
+        image.src = blob.src;
+        await image.decode();
+        if (cancelled) return;
+        screenshotImageRef.current = image;
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        screenshotSourceRef.current = canvas;
+        canvas.getContext("2d")?.drawImage(image, 0, 0);
+        drawScreenshotMarks(canvas, { width: canvas.width, height: canvas.height },
+          { ...DEFAULT_SCREENSHOT_EDITS, marks: useEditorStore.getState().screenshotMarks }, false, "color");
+        requestPaintRef.current();
+      } catch (error) {
+        if (!cancelled) showError(String(error));
+      }
+    })();
+    return () => { cancelled = true; revoke?.(); };
+  }, [screenshotId]);
+
+  useEffect(() => {
+    const image = screenshotImageRef.current;
+    const canvas = screenshotSourceRef.current;
+    if (!image || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0);
+    drawScreenshotMarks(canvas, { width: canvas.width, height: canvas.height },
+      { ...DEFAULT_SCREENSHOT_EDITS, marks: screenshotMarks }, false, "color");
+    requestPaintRef.current();
+  }, [screenshotMarks]);
 
   const { t: translate } = useI18n();
   const screenUrl = useEditorStore((s) => s.screenUrl);
@@ -220,8 +274,14 @@ export function PreviewStage({
   }, [syncFaceCam]);
 
   const stage = useStageDimensions();
+  const screenshotOutput = screenshotId ? screenshotStage(
+    screenshotSourceSize ?? { width: 1920, height: 1080 },
+    { ...DEFAULT_SCREENSHOT_EDITS, aspectRatioPresetId: useEditorStore.getState().aspectRatioPresetId },
+  ).output : stage;
   const stageRef = useRef(stage);
   stageRef.current = stage;
+  const outputSizeRef = useRef(screenshotOutput);
+  outputSizeRef.current = screenshotOutput;
 
   useEffect(() => {
     preloadCursorAssets();
@@ -261,7 +321,11 @@ export function PreviewStage({
 
     const attachCompositor = (comp: FrameCompositor) => {
       const { width, height } = stageRef.current;
-      comp.resize(width, height);
+      const output = outputSizeRef.current;
+      // The compositor may finish initialising after React's resize effect has
+      // already run. Always attach with the latest screenshot output size so
+      // that asynchronous initialisation cannot reset a 4K still to 1920.
+      comp.resize(width, height, output.width, output.height);
       compositor = comp;
       compositorRef.current = comp;
       mountCanvas(comp.canvas);
@@ -273,17 +337,23 @@ export function PreviewStage({
       console.info(`[preview] compositor backend=${comp.backend}`);
     };
 
-    const compositorOptions = () => ({
-      width: stageRef.current.width,
-      height: stageRef.current.height,
-      preserveDrawingBuffer: false,
-      mipmaps: false,
-      gpuPreference: ["webgl", "webgpu"] as const,
-    });
+    const compositorOptions = () => {
+      const composition = stageRef.current;
+      const output = outputSizeRef.current;
+      return {
+        width: composition.width,
+        height: composition.height,
+        outputWidth: output.width,
+        outputHeight: output.height,
+        preserveDrawingBuffer: useEditorStore.getState().screenshotId !== null,
+        mipmaps: false,
+        gpuPreference: ["webgl", "webgpu"] as const,
+      };
+    };
 
     const paint = () => {
       const comp = compositor;
-      if (!comp) return;
+      if (!comp) return false;
       const store = useEditorStore.getState();
       const {
         sourceAspect,
@@ -352,7 +422,7 @@ export function PreviewStage({
           {
             width: stageRef.current.width,
             height: stageRef.current.height,
-            video,
+            video: store.screenshotId ? screenshotSourceRef.current : video,
             cameraVideo: cameraForFrame,
             sourceAspect,
             background: backgroundImage,
@@ -382,9 +452,11 @@ export function PreviewStage({
           },
         );
         recoverAttempts = 0;
+        return true;
       } catch (e) {
         console.error("[preview] compose failed — remounting compositor", e);
         recoverCompositor();
+        return false;
       }
     };
 
@@ -491,6 +563,11 @@ export function PreviewStage({
       });
     };
     requestPaintRef.current = requestPaint;
+    if (screenshotFrameRef) screenshotFrameRef.current = () => {
+      if (!screenshotSourceRef.current) return null;
+      if (!paint()) return null;
+      return compositor?.canvas instanceof HTMLCanvasElement ? compositor.canvas : null;
+    };
 
     const dropCompositor = () => {
       generation += 1;
@@ -613,7 +690,11 @@ export function PreviewStage({
       prev: FramePaintState,
     ): boolean =>
       next.sourceAspect !== prev.sourceAspect ||
+      next.sourceVideoSize !== prev.sourceVideoSize ||
+      next.aspectRatioPresetId !== prev.aspectRatioPresetId ||
       next.backgroundImage !== prev.backgroundImage ||
+      next.backgroundType !== prev.backgroundType ||
+      next.screenshotId !== prev.screenshotId ||
       next.look !== prev.look ||
       next.zoomFragments !== prev.zoomFragments ||
       next.perspectiveFragments !== prev.perspectiveFragments ||
@@ -662,6 +743,7 @@ export function PreviewStage({
       if (paintRaf) cancelAnimationFrame(paintRaf);
       unsubscribe();
       requestPaintRef.current = () => {};
+      if (screenshotFrameRef) screenshotFrameRef.current = null;
       detachContextLoss?.();
       detachContextLoss = null;
       compositor?.dispose();
@@ -670,14 +752,14 @@ export function PreviewStage({
       host.replaceChildren();
       releasePreviewGpu();
     };
-  }, []);
+  }, [screenshotFrameRef, videoRef]);
 
   useEffect(() => {
     const comp = compositorRef.current;
     if (!comp) return;
-    comp.resize(stage.width, stage.height);
+    comp.resize(stage.width, stage.height, screenshotOutput.width, screenshotOutput.height);
     requestPaintRef.current();
-  }, [stage.width, stage.height]);
+  }, [stage.width, stage.height, screenshotId, screenshotOutput.width, screenshotOutput.height]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -720,14 +802,14 @@ export function PreviewStage({
     if (isPlaying)
       video.play().catch(() => useEditorStore.getState().setPlaying(false));
     else video.pause();
-  }, [isPlaying, playbackUrl, speedRanges, globalSpeed]);
+  }, [isPlaying, playbackUrl, speedRanges, globalSpeed, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
     video.volume = Math.max(0, Math.min(1, volume / 100));
-  }, [muted, volume]);
+  }, [muted, volume, videoRef]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -755,7 +837,7 @@ export function PreviewStage({
       // `currentTime` change always schedules one — two writers reading the
       // clock from different places is what let a seek pull the cam both ways.
     });
-  }, []);
+  }, [videoRef]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-hidden p-4">

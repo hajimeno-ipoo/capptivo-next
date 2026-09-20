@@ -130,10 +130,22 @@ export function AnnotationApp() {
   // stays mounted while hidden. Track native visibility to suspend the idle
   // cursor-poll when off-screen — the window is created to be shown, so `true`.
   const [overlayVisible, setOverlayVisible] = useState(true);
+  const [screenshotChromeHidden, setScreenshotChromeHidden] = useState(false);
   // Mirror of `overlayVisible` for the context-loss handler, which is installed
   // once and would otherwise close over the mount-time value.
   const overlayVisibleRef = useRef(true);
   overlayVisibleRef.current = overlayVisible;
+
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    void listen<{ hidden: boolean; nonce: string }>("screenshot://chrome", (event) => {
+      setScreenshotChromeHidden(event.payload.hidden);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        void emit("screenshot://chrome-ready", event.payload.nonce);
+      }));
+    }).then((fn) => { stop = fn; });
+    return () => stop?.();
+  }, []);
 
   const passThrough = tool === "select" && panel === null;
 
@@ -512,7 +524,7 @@ export function AnnotationApp() {
         // the desktop through for a frame.
         // Vertically centered: the bar is tall, and anchoring it low (was 72%)
         // clipped the bottom tools into the Dock on smaller displays.
-        className="fixed top-1/2 right-6 z-10 flex w-12 flex-col items-center gap-0.5 rounded-2xl border border-border bg-card p-1.5 shadow-xl will-change-transform"
+        className={cn("fixed top-1/2 right-6 z-10 flex w-12 flex-col items-center gap-0.5 rounded-2xl border border-border bg-card p-1.5 shadow-xl will-change-transform", screenshotChromeHidden && "invisible pointer-events-none")}
         style={{ transform: barTransform(barOffset.x, barOffset.y) }}
         onPointerDown={(e) => e.stopPropagation()}
       >

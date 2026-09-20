@@ -19,6 +19,8 @@ export const ko: Record<TranslationKey, string> = {
 
   "panel.look.title": "모양",
   "panel.look.subtitle": "배경과 구도",
+  "panel.image.title": "이미지",
+  "panel.image.subtitle": "원본 이미지의 주석 편집",
   "panel.cursor.title": "커서",
   "panel.cursor.subtitle": "포인터 스타일과 움직임",
   "panel.camera.title": "페이스캠",
@@ -351,6 +353,8 @@ export const ko: Record<TranslationKey, string> = {
   "recorder.recordings": "녹화",
   "recorder.close": "닫기",
   "recorder.record": "녹화",
+  "recorder.screenshot": "스크린샷",
+  "recorder.captureKind": "캡처 종류",
   "recorder.mode.display": "디스플레이",
   "recorder.mode.window": "창",
   "recorder.mode.area": "영역",

@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { translateNow } from "@/lib/i18n";
 import { commands } from "../../ipc/bindings";
 import { onElapsed, onError, onInterrupted, onStateChanged } from "../../ipc/events";
@@ -26,6 +26,54 @@ import { flushCameraCaptureWithTimeout } from "./flushCamera";
 import { logClientError, logClientInfo } from "@/lib/errorLogging";
 
 export type CaptureMode = CaptureSourceKind | "area" | "device";
+export type CaptureKind = "video" | "screenshot";
+
+const SCREENSHOT_CHROME_ACK_TIMEOUT_MS = 2_000;
+const SCREENSHOT_CHROME_RETRY_MS = 100;
+
+/**
+ * Do not capture until the annotation WebView has painted the requested chrome
+ * state. The overlay is created lazily, so the first event can legitimately
+ * arrive before its listener is mounted; retry until the WebView acknowledges
+ * the exact nonce, and fail closed instead of taking a screenshot with the
+ * toolbar still visible.
+ */
+async function setScreenshotChromeHidden(
+  hidden: boolean,
+  nonce: string,
+): Promise<void> {
+  let acknowledge: () => void = () => undefined;
+  let rejectReady: (reason: Error) => void = () => undefined;
+  const ready = new Promise<void>((resolve, reject) => {
+    acknowledge = resolve;
+    rejectReady = reject;
+  });
+  const unlisten = await listen<string>("screenshot://chrome-ready", (event) => {
+    if (event.payload === nonce) acknowledge();
+  });
+  let retry: number | null = null;
+  let timeout: number | null = null;
+  const request = () =>
+    emit("screenshot://chrome", { hidden, nonce }).catch((error) => {
+      rejectReady(error instanceof Error ? error : new Error(String(error)));
+    });
+  try {
+    await request();
+    retry = window.setInterval(() => void request(), SCREENSHOT_CHROME_RETRY_MS);
+    timeout = window.setTimeout(() => {
+      rejectReady(new Error(
+        hidden
+          ? "描画ツールバーを隠せなかったため、スクリーンショットを中止しました"
+          : "描画ツールバーを元に戻せませんでした",
+      ));
+    }, SCREENSHOT_CHROME_ACK_TIMEOUT_MS);
+    await ready;
+  } finally {
+    if (retry !== null) window.clearInterval(retry);
+    if (timeout !== null) window.clearTimeout(timeout);
+    unlisten();
+  }
+}
 
 /** Local capture options (everything in RecorderConfig except source id + fps). */
 interface CaptureOptions {
@@ -44,6 +92,7 @@ interface RecorderStore {
   state: RecorderState;
   elapsed: number;
   lastError: string | null;
+  screenshotBusy: boolean;
 
   // --- local UI ---
   permissions: PermissionStatus | null;
@@ -59,6 +108,7 @@ interface RecorderStore {
   /** Scoped to the Device menu — a phoneless Mac is not a recorder error. */
   deviceError: string | null;
   captureMode: CaptureMode;
+  captureKind: CaptureKind;
   areaSelection: CaptureAreaSelection | null;
   options: CaptureOptions;
   loadingSources: boolean;
@@ -95,6 +145,7 @@ interface RecorderStore {
   ensureMicrophoneDevices: () => Promise<void>;
   requestCameraAccess: () => Promise<void>;
   setCaptureMode: (mode: CaptureMode) => void;
+  setCaptureKind: (kind: CaptureKind) => void;
   pickArea: () => Promise<void>;
   /** Hide crop guide and leave area mode (Esc / dismiss). */
   clearAreaSelection: () => void;
@@ -120,6 +171,7 @@ interface RecorderStore {
    */
   prewarmCapture: () => Promise<void>;
   startRecording: () => Promise<void>;
+  captureScreenshot: () => Promise<void>;
   stopRecording: () => Promise<void>;
   togglePause: () => Promise<void>;
 }
@@ -219,6 +271,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
   state: { status: "idle" },
   elapsed: 0,
   lastError: null,
+  screenshotBusy: false,
 
   permissions: null,
   sources: [],
@@ -228,6 +281,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
   loadingDevices: false,
   deviceError: null,
   captureMode: "display",
+  captureKind: "video",
   areaSelection: null,
   options: DEFAULT_OPTIONS,
   loadingSources: false,
@@ -296,6 +350,10 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
       // Bar reopened — re-warm mic if still selected (Rust cools on dismiss).
       void listen("recorder://shown", () => {
         get().syncMicWarm();
+        const { captureMode, areaSelection } = get();
+        if (captureMode === "area" && areaSelection) {
+          void commands.showAreaFrameGuide(areaSelection).catch(() => undefined);
+        }
       });
       if (typeof navigator !== "undefined" && navigator.mediaDevices) {
         navigator.mediaDevices.addEventListener("devicechange", () => {
@@ -390,7 +448,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
   },
 
   selectDevice(id) {
-    set({ selectedDeviceId: id, captureMode: "device" });
+    set({ selectedDeviceId: id, captureMode: "device", captureKind: "video" });
   },
 
   async refreshMediaDevices() {
@@ -489,12 +547,22 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
     }
     set({
       captureMode: mode,
+      captureKind: mode === "device" ? "video" : get().captureKind,
       areaSelection: mode === "area" ? get().areaSelection : null,
       selectedSourceId: pickDefaultSource(sources, mode, selectedSourceId),
     });
     // Phones come and go while the bar is open; the list is only meaningful the
     // moment the user asks for it.
     if (mode === "device") void get().refreshDevices();
+  },
+
+  setCaptureKind(kind) {
+    if (kind === "screenshot" && get().captureMode === "device") {
+      get().setCaptureMode("display");
+    }
+    set({ captureKind: kind });
+    if (kind === "screenshot") void commands.coolMicrophone().catch(() => undefined);
+    else get().syncMicWarm();
   },
 
   async pickArea() {
@@ -632,7 +700,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
   },
 
   syncMicWarm() {
-    const { micEnabled, micDeviceId, microphones, state } = get();
+    const { micEnabled, micDeviceId, microphones, state, captureKind } = get();
     if (
       state.status === "recording" ||
       state.status === "paused" ||
@@ -640,7 +708,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
     ) {
       return;
     }
-    if (!micEnabled || !micDeviceId) {
+    if (captureKind === "screenshot" || !micEnabled || !micDeviceId) {
       void commands.coolMicrophone().catch(() => undefined);
       return;
     }
@@ -768,6 +836,49 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
       reportError(describeError(e));
       // Warm mic was taken for the failed start — reopen if still selected.
       get().syncMicWarm();
+    }
+  },
+
+  async captureScreenshot() {
+    if (get().screenshotBusy || get().state.status !== "idle") return;
+    const { captureMode, selectedSourceId, areaSelection, options } = get();
+    const sourceId = captureMode === "area" ? areaSelection?.sourceId : selectedSourceId;
+    if (captureMode === "device" || !sourceId || (captureMode === "area" && !areaSelection)) {
+      reportError(translateNow(captureMode === "area" ? "recorder.error.noArea" : "recorder.error.noSource"));
+      return;
+    }
+    if (!get().permissions?.canRecord) {
+      await get().requestPermission();
+      if (!get().permissions?.canRecord) {
+        reportError(translateNow("recorder.error.screenPermission"));
+        return;
+      }
+    }
+    set({ screenshotBusy: true, lastError: null });
+    const nonce = `${Date.now()}-${Math.random()}`;
+    const annotationWasVisible = get().annotationVisible;
+    try {
+      // The annotation canvas remains visible; only its tool strip is removed.
+      if (annotationWasVisible) {
+        await setScreenshotChromeHidden(true, `${nonce}-hide`);
+      }
+      const id = await commands.captureScreenshot({
+        sourceId,
+        crop: captureMode === "area" ? areaSelection!.crop : null,
+        showCursor: options.showCursor,
+      });
+      await commands.openScreenshotEditor(id);
+    } catch (e) {
+      reportError(describeError(e));
+    } finally {
+      if (annotationWasVisible) {
+        try {
+          await setScreenshotChromeHidden(false, `${nonce}-show`);
+        } catch (e) {
+          reportError(describeError(e));
+        }
+      }
+      set({ screenshotBusy: false });
     }
   },
 

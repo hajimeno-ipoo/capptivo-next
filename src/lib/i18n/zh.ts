@@ -18,6 +18,8 @@ export const zh: Record<TranslationKey, string> = {
 
   "panel.look.title": "外观",
   "panel.look.subtitle": "背景与构图",
+  "panel.image.title": "图像",
+  "panel.image.subtitle": "编辑原图上的标注",
   "panel.cursor.title": "光标",
   "panel.cursor.subtitle": "指针样式与运动",
   "panel.camera.title": "摄像头",
@@ -342,6 +344,8 @@ export const zh: Record<TranslationKey, string> = {
   "recorder.recordings": "录制",
   "recorder.close": "关闭",
   "recorder.record": "录制",
+  "recorder.screenshot": "截图",
+  "recorder.captureKind": "拍摄类型",
   "recorder.mode.display": "显示器",
   "recorder.mode.window": "窗口",
   "recorder.mode.area": "区域",

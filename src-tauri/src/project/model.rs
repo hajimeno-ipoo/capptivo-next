@@ -97,3 +97,28 @@ pub struct ProjectSummary {
     pub duration_seconds: f64,
     pub thumbnail: Option<String>,
 }
+
+/// Static-image projects have their own manifest so video project v1 stays intact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotProject {
+    pub schema_version: u32,
+    pub id: String,
+    pub title: Option<String>,
+    pub created_at: String,
+    pub source_title: String,
+    pub width: u32,
+    pub height: u32,
+    pub original: String,
+    #[serde(default)]
+    pub editor_state: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub created_at: String,
+    pub thumbnail: String,
+}

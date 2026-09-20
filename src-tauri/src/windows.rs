@@ -2062,6 +2062,10 @@ fn emit_show_library(win: &tauri::WebviewWindow) {
     let _ = win.emit(SHOW_LIBRARY_EVENT, ());
 }
 
+fn is_editor_shell_label(label: &str) -> bool {
+    label.starts_with(EDITOR_LABEL_PREFIX)
+}
+
 /// Focus the invoking editor/library window on the user's current display (from JS).
 #[tauri::command]
 pub fn present_window(app: AppHandle, window: tauri::WebviewWindow) -> tauri::Result<()> {
@@ -2082,7 +2086,7 @@ pub fn open_library(app: AppHandle) -> tauri::Result<()> {
     let mut editors: Vec<_> = app
         .webview_windows()
         .into_iter()
-        .filter(|(label, _)| label.starts_with(EDITOR_LABEL_PREFIX))
+        .filter(|(label, _)| is_editor_shell_label(label))
         .collect();
     editors.sort_by(|a, b| a.0.cmp(&b.0));
     if let Some((_, win)) = editors.pop() {
@@ -2111,6 +2115,18 @@ pub fn open_editor(app: AppHandle, project_id: String) -> tauri::Result<()> {
     open_editor_window(&app, &project_id)
 }
 
+#[tauri::command]
+pub fn open_screenshot_editor(app: AppHandle, state: tauri::State<crate::state::AppState>, screenshot_id: String) -> crate::error::AppResult<()> {
+    // Check the project before using the id in a WebView label and URL.
+    state.store.load_screenshot(&screenshot_id)?;
+    // The crop guide belongs to the recorder, not to the image editor.
+    crate::area_picker::hide_area_frame_guide(&app);
+    let label = format!("{EDITOR_LABEL_PREFIX}screenshot:{screenshot_id}");
+    let url = format!("editor.html?screenshot={screenshot_id}");
+    ensure_editor_window(&app, &label, &url, "Capptivo Screenshot")
+        .map_err(|e| crate::error::AppError::Other(e.to_string()))
+}
+
 /// Open (or focus) the editor window for a project. Switches the app to a
 /// Dock-visible `Regular` activation policy on macOS.
 ///
@@ -2128,6 +2144,10 @@ pub fn close_editor_if_open(app: &AppHandle, project_id: &str) {
     if let Some(win) = app.get_webview_window(&label) {
         let _ = win.close();
     }
+    let screenshot_label = format!("{EDITOR_LABEL_PREFIX}screenshot:{project_id}");
+    if let Some(win) = app.get_webview_window(&screenshot_label) {
+        let _ = win.close();
+    }
 }
 
 /// When the last library/editor window closes, drop back to menubar-only.
@@ -2139,7 +2159,14 @@ pub fn refresh_activation_policy(app: &AppHandle, closing: &str) {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::fullscreen_bits;
+    use super::{fullscreen_bits, is_editor_shell_label};
+
+    #[test]
+    fn library_reuses_video_and_screenshot_editor_shells() {
+        assert!(is_editor_shell_label("editor:recording-id"));
+        assert!(is_editor_shell_label("editor:screenshot:image-id"));
+        assert!(!is_editor_shell_label("library"));
+    }
 
     #[test]
     fn native_fullscreen_bits_force_primary_arrows() {

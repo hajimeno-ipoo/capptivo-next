@@ -8,6 +8,11 @@ use crate::error::{AppError, AppResult};
 use screencapturekit_sys::shareable_content::{
     ExcludingDesktopWindowsConfig, UnsafeSCShareableContent,
 };
+use core_graphics::window::{
+    create_window_list, kCGNullWindowID, kCGWindowListExcludeDesktopElements,
+    kCGWindowListOptionOnScreenOnly,
+};
+use std::collections::HashSet;
 use std::process::Command;
 use std::time::Duration;
 
@@ -40,6 +45,49 @@ pub fn prepare_for_capture(window_id: u32) -> AppResult<()> {
     }
 
     Err(AppError::InvalidSource(NOT_ON_SCREEN.into()))
+}
+
+/// Still capture needs the selected window's current contents, not a stale
+/// backing surface from a covered window. Confirm both app focus and window
+/// order after raising it; an on-screen membership check alone is insufficient.
+pub fn prepare_for_screenshot(window_id: u32) -> AppResult<()> {
+    let (pid, app_name, title, bundle_id) = window_meta(window_id)?;
+    activate_window(pid, &app_name, bundle_id.as_deref(), &title);
+    for _ in 0..MAX_ATTEMPTS {
+        std::thread::sleep(Duration::from_millis(SETTLE_MS));
+        if is_capture_ready(window_id)? && selected_window_is_front(window_id, pid)? {
+            return Ok(());
+        }
+        if pid > 0 { activate_app(pid); }
+        if pid > 0 { let _ = raise_window_via_ax_pid(pid, &title); }
+    }
+    Err(AppError::InvalidSource(
+        "Couldn't bring the selected window to the front. Select it on screen and try again.".into(),
+    ))
+}
+
+fn selected_window_is_front(window_id: u32, pid: i32) -> AppResult<bool> {
+    if pid <= 0 { return Ok(false); }
+    let front_pid = unsafe {
+        use objc::{class, msg_send, sel, sel_impl};
+        use objc::runtime::Object;
+        let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let app: *mut Object = msg_send![workspace, frontmostApplication];
+        if app.is_null() { return Ok(false); }
+        let process_id: i32 = msg_send![app, processIdentifier];
+        process_id
+    };
+    if front_pid != pid { return Ok(false); }
+
+    let app_windows: HashSet<u32> = shareable_content_all()?.windows().into_iter()
+        .filter(|w| w.get_window_layer() < 20 && w.get_owning_application()
+            .map(|owner| owner.get_process_id() == pid).unwrap_or(false))
+        .map(|w| w.get_window_id()).collect();
+    let ordered = create_window_list(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    ).ok_or_else(|| AppError::Other("WindowServer did not return window order".into()))?;
+    Ok(ordered.iter().find(|id| app_windows.contains(id)).map(|id| *id) == Some(window_id))
 }
 
 /// Whether SCK will include this window in an on-screen capture session.

@@ -15,6 +15,7 @@ import {
   Check,
   ChevronDown,
   GripVertical,
+  Image as ImageIcon,
   Monitor,
   MonitorSpeaker,
   Mic,
@@ -23,6 +24,7 @@ import {
   Settings,
   Smartphone,
   SquareDashed,
+  Video,
   VolumeX,
   X,
 } from "lucide-react";
@@ -54,10 +56,12 @@ type MenuId =
 
 export function RecorderToolbar({
   onRecord,
+  onScreenshot,
   onDragPreview,
   onDragCommit,
 }: {
   onRecord: () => void;
+  onScreenshot: () => void;
   /** Direct DOM transform during drag — no React re-render per frame. */
   onDragPreview: (offset: BarOffset) => void;
   /** Hitbox resync after the store commit on pointer-up. */
@@ -68,10 +72,10 @@ export function RecorderToolbar({
   const captureMode = useRecorderStore((s) => s.captureMode);
   const areaSelection = useRecorderStore((s) => s.areaSelection);
   const selectedSourceId = useRecorderStore((s) => s.selectedSourceId);
-  // Quartz's legacy still-image APIs can block WindowServer on current macOS.
-  // Keep native thumbnails on Windows; source metadata is enough elsewhere.
-  const includePickerThumbnails = caps?.os === "windows";
   const selectedDeviceId = useRecorderStore((s) => s.selectedDeviceId);
+  const screenshotBusy = useRecorderStore((s) => s.screenshotBusy);
+  const captureKind = useRecorderStore((s) => s.captureKind);
+  const setCaptureKind = useRecorderStore((s) => s.setCaptureKind);
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
 
@@ -238,6 +242,39 @@ export function RecorderToolbar({
           <GripVertical className="pointer-events-none size-4" />
         </div>
 
+        {caps?.os === "macos" ? (
+          <div role="group" aria-label={t("recorder.captureKind")} className="flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(CTRL, "size-9 shrink-0 text-muted-foreground", captureKind === "video" && "bg-primary/20 text-primary hover:bg-primary/25")}
+              aria-label={t("recorder.record")}
+              aria-pressed={captureKind === "video"}
+              title={t("recorder.record")}
+              disabled={screenshotBusy}
+              onClick={() => { setOpenMenu(null); setCaptureKind("video"); }}
+            >
+              <Video className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(CTRL, "size-9 shrink-0 text-muted-foreground", captureKind === "screenshot" && "bg-primary/20 text-primary hover:bg-primary/25")}
+              aria-label={t("recorder.screenshot")}
+              aria-pressed={captureKind === "screenshot"}
+              title={t("recorder.screenshot")}
+              disabled={screenshotBusy}
+              onClick={() => { setOpenMenu(null); setCaptureKind("screenshot"); }}
+            >
+              <ImageIcon className="size-4" />
+            </Button>
+          </div>
+        ) : null}
+
+        {caps?.os === "macos" ? <Divider /> : null}
+
         <Button
           type="button"
           variant="ghost"
@@ -274,7 +311,7 @@ export function RecorderToolbar({
               if (open) {
                 useRecorderStore.getState().setCaptureMode("display");
                 void useRecorderStore.getState().refreshSources({
-                  thumbnails: includePickerThumbnails,
+                  thumbnails: true,
                 });
               }
               setMenuOpen("display", open);
@@ -291,7 +328,7 @@ export function RecorderToolbar({
                 if (open) {
                   useRecorderStore.getState().setCaptureMode("window");
                   void useRecorderStore.getState().refreshSources({
-                    thumbnails: includePickerThumbnails,
+                    thumbnails: true,
                   });
                 }
                 setMenuOpen("window", open);
@@ -307,7 +344,7 @@ export function RecorderToolbar({
               onClick={() => void useRecorderStore.getState().pickArea()}
             />
           ) : null}
-          {caps?.canCaptureDevice ? (
+          {caps?.canCaptureDevice && captureKind === "video" ? (
             <DeviceMenu
               open={openMenu === "device"}
               onOpenChange={(open) => {
@@ -325,14 +362,16 @@ export function RecorderToolbar({
             open={openMenu === "camera"}
             onOpenChange={(open) => setMenuOpen("camera", open)}
           />
-          <MicMenu
-            open={openMenu === "mic"}
-            onOpenChange={(open) => setMenuOpen("mic", open)}
-          />
-          <AudioMenu
-            open={openMenu === "audio"}
-            onOpenChange={(open) => setMenuOpen("audio", open)}
-          />
+          {captureKind === "video" ? <>
+            <MicMenu
+              open={openMenu === "mic"}
+              onOpenChange={(open) => setMenuOpen("mic", open)}
+            />
+            <AudioMenu
+              open={openMenu === "audio"}
+              onOpenChange={(open) => setMenuOpen("audio", open)}
+            />
+          </> : null}
         </div>
 
         <Divider />
@@ -362,12 +401,14 @@ export function RecorderToolbar({
         <Button
           type="button"
           size="sm"
-          disabled={!canRecord}
-          onClick={onRecord}
+          disabled={!canRecord || screenshotBusy}
+          onClick={captureKind === "screenshot" && caps?.os === "macos" ? onScreenshot : onRecord}
           className="h-9 shrink-0 gap-2 rounded-xl px-3.5 font-semibold"
         >
-          <span className="size-2 rounded-full bg-primary-foreground" />
-          {t("recorder.record")}
+          {captureKind === "screenshot" && caps?.os === "macos"
+            ? <ImageIcon className="size-4" />
+            : <span className="size-2 rounded-full bg-primary-foreground" />}
+          {captureKind === "screenshot" && caps?.os === "macos" ? t("recorder.screenshot") : t("recorder.record")}
         </Button>
       </div>
     </div>
@@ -798,7 +839,6 @@ function SourceMenuContent({
   const select = useRecorderStore((s) => s.selectSource);
   const loading = useRecorderStore((s) => s.loadingSources);
   const refresh = useRecorderStore((s) => s.refreshSources);
-  const caps = usePlatformCapabilities();
   const filtered = sources.filter((s) => s.kind === mode);
 
   return (
@@ -812,46 +852,16 @@ function SourceMenuContent({
         <button
           type="button"
           className="rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          onClick={() => void refresh({ thumbnails: caps?.os === "windows" })}
+          onClick={() => void refresh({ thumbnails: true })}
         >
           {loading ? "…" : t("recorder.refresh")}
         </button>
       </div>
 
-      {mode === "display" ? (
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          {filtered.map((source, i) => {
-            const selected = source.id === selectedId;
-            return (
-              <button
-                key={source.id}
-                type="button"
-                onClick={() => {
-                  select(source.id);
-                  onPick();
-                }}
-                className={cn(
-                  "flex flex-col gap-1.5 rounded-lg border p-1.5 text-left transition-colors",
-                  selected
-                    ? "border-primary/50 bg-primary/10"
-                    : "border-transparent hover:bg-accent/80",
-                )}
-              >
-                <SourceThumbnail
-                  source={source}
-                  index={i}
-                  className="aspect-video w-full rounded-md"
-                />
-                <span className="truncate px-0.5 pb-0.5 text-center text-xs text-muted-foreground">
-                  {source.title || `${t("recorder.mode.display")} ${i + 1}`}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="max-h-52 space-y-0.5 overflow-y-auto">
-          {filtered.map((source) => (
+      <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto pr-1">
+        {filtered.map((source, i) => {
+          const selected = source.id === selectedId;
+          return (
             <button
               key={source.id}
               type="button"
@@ -860,21 +870,29 @@ function SourceMenuContent({
                 onPick();
               }}
               className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                source.id === selectedId
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                "flex min-w-0 flex-col gap-1.5 rounded-lg border p-1.5 text-left transition-colors",
+                selected
+                  ? "border-primary/50 bg-primary/10"
+                  : "border-transparent hover:bg-accent/80",
               )}
             >
               <SourceThumbnail
                 source={source}
-                className="h-9 w-14 shrink-0 rounded-md"
+                index={i}
+                className="aspect-video w-full rounded-md"
               />
-              <span className="min-w-0 truncate">{source.title}</span>
+              <span className="w-full truncate px-0.5 pb-0.5 text-center text-xs text-muted-foreground">
+                {source.title ||
+                  `${t(
+                    mode === "display"
+                      ? "recorder.mode.display"
+                      : "recorder.mode.window",
+                  )} ${i + 1}`}
+              </span>
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       {filtered.length === 0 ? (
         <p className="px-2 py-4 text-center text-xs text-muted-foreground">
@@ -899,7 +917,7 @@ function SourceThumbnail({
       <img
         src={`data:image/png;base64,${source.thumbnail}`}
         alt=""
-        className={cn("object-cover", className)}
+        className={cn("bg-black object-contain", className)}
       />
     );
   }

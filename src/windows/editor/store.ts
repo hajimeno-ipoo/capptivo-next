@@ -87,6 +87,7 @@ import {
   saveLastExportSettings,
   type EditorPresetSnapshot,
 } from "./lib/editorPresets";
+import { supportsEditorFeature } from "./lib/editorMode";
 import { loadRecordingMetadata } from "./lib/cursorLoad";
 import {
   computeDefaultZoomRange,
@@ -105,6 +106,7 @@ import {
   type ZoomSuggestionStatus,
 } from "./lib/zoomSuggestionUtils";
 import type { InspectorPanelId } from "./components/InspectorChrome";
+import { parseScreenshotEdits, type ScreenshotMark } from "./screenshotModel";
 import type { CaptionSettings, CaptionCue } from "@/captions/types";
 import {
   DEFAULT_CAPTION_SETTINGS,
@@ -344,6 +346,8 @@ export function parseFaceCam(raw: unknown): FaceCamParams {
 
 interface EditorStore {
   projectId: string | null;
+  screenshotId: string | null;
+  screenshotMarks: ScreenshotMark[];
   project: Project | null;
   /** Original recording — what the exporter reads. */
   screenUrl: string | null;
@@ -427,7 +431,8 @@ interface EditorStore {
   /** User-uploaded images from the global app-data library. */
   customImageBackgrounds: BackgroundPreset[];
 
-  init: (projectId: string) => Promise<void>;
+  init: (projectId: string, screenshot?: boolean) => Promise<void>;
+  setScreenshotMarks: (marks: ScreenshotMark[]) => void;
   onVideoLoaded: (width: number, height: number, duration: number) => void;
   setBackgroundType: (type: BackgroundType) => void;
   selectBackground: (preset: BackgroundPreset) => void;
@@ -722,6 +727,7 @@ function enqueuePersist(get: () => EditorStore): void {
     faceCam,
     aspectRatioPresetId,
     background: snapshotBackground(get()),
+    ...(get().screenshotId ? { marks: get().screenshotMarks } : {}),
   };
   persistChain = persistChain
     .catch(() => undefined)
@@ -883,6 +889,8 @@ function parseEditorState(raw: unknown, duration: number): {
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
   projectId: null,
+  screenshotId: null,
+  screenshotMarks: [],
   project: null,
   screenUrl: null,
   proxyUrl: null,
@@ -953,7 +961,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   colorPresets: buildColorBackgroundPresets(),
   customImageBackgrounds: [],
 
-  async init(projectId) {
+  async init(projectId, screenshot = false) {
     await flushPersist(get);
     if (autoSuggestTimer) {
       clearTimeout(autoSuggestTimer);
@@ -968,6 +976,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       currentTime: 0,
       duration: 0,
       screenUrl: null,
+      screenshotId: screenshot ? projectId : null,
+      screenshotMarks: [],
       proxyUrl: null,
       proxyPending: false,
       cameraUrl: null,
@@ -1006,7 +1016,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       customGradientEnd: "#9599E2",
       customGradientAngle: 135,
       customImageBackgrounds: [],
-      inspectorPanel: get().inspectorPanel === "camera" ? "look" : get().inspectorPanel,
+      inspectorPanel: get().inspectorPanel === "camera"
+        || (screenshot && (get().inspectorPanel === "cursor" || get().inspectorPanel === "captions"))
+        || (!screenshot && get().inspectorPanel === "image")
+        ? "look" : get().inspectorPanel,
     });
     invalidateZoomKeyframesCache();
     try {
@@ -1069,20 +1082,34 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return;
     }
     const aspect = height > 0 ? width / height : 16 / 9;
-    const parsed = parseEditorState(get().project?.editorState, duration);
-    const segments = parsed?.segments ?? createFullSegment(duration);
+    const isScreenshot = get().screenshotId !== null;
+    const rawState = get().project?.editorState;
+    const legacyImageState = isScreenshot && rawState && typeof rawState === "object" && !("segments" in rawState)
+      ? parseScreenshotEdits(rawState) : null;
+    const parsed = parseEditorState(rawState, duration);
+    // A screenshot uses the shared timeline as an editing surface, but its
+    // source image itself is never trimmable.  Discard trim/speed state that
+    // may have been persisted by older builds so an image always opens with
+    // one intact source segment at normal speed.
+    const segments = isScreenshot
+      ? createFullSegment(duration)
+      : parsed?.segments ?? createFullSegment(duration);
     const zoomFragments = parsed?.zoomFragments ?? [];
     const perspectiveFragments = parsed?.perspectiveFragments ?? [];
-    const blurRegions = parsed?.blurRegions ?? [];
-    const speedRanges = parsed?.speedRanges ?? [];
+    const blurRegions = legacyImageState
+      ? legacyImageState.blurRegions.map((region) => ({ ...region, start: 0, end: duration }))
+      : parsed?.blurRegions ?? [];
+    const speedRanges = isScreenshot ? [] : parsed?.speedRanges ?? [];
     const textClips = parsed?.textClips ?? [];
-    const globalSpeed = parsed?.globalSpeed ?? DEFAULT_PLAYBACK_SPEED;
+    const globalSpeed = isScreenshot
+      ? DEFAULT_PLAYBACK_SPEED
+      : parsed?.globalSpeed ?? DEFAULT_PLAYBACK_SPEED;
     const clickSoundSettings = parsed?.clickSoundSettings ?? {
       ...DEFAULT_CLICK_SOUND_SETTINGS,
     };
     const look = parsed?.look ? { ...get().look, ...parsed.look } : get().look;
     const screenContentCrop =
-      parsed?.screenContentCrop !== undefined ? parsed.screenContentCrop : get().screenContentCrop;
+      parsed?.screenContentCrop !== undefined ? parsed.screenContentCrop : legacyImageState?.crop ?? get().screenContentCrop;
     const captions = parsed?.captions ?? [];
     const captionSettings = parseCaptionSettings({
       ...DEFAULT_CAPTION_SETTINGS,
@@ -1133,6 +1160,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         customGradientEnd: bg.customGradientEnd,
         customGradientAngle: bg.customGradientAngle,
       });
+    } else if (legacyImageState?.backgroundId) {
+      const preset = [...get().imagePresets, ...get().gradientPresets, ...get().colorPresets]
+        .find((candidate) => candidate.id === legacyImageState.backgroundId);
+      if (preset) get().selectBackground(preset);
     } else {
       const first = get().imagePresets[0];
       if (first) get().selectBackground(first);
@@ -1140,8 +1171,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     invalidateZoomKeyframesCache();
     const bgType = bg?.type ?? get().backgroundType;
-    let aspectRatioPresetId = parsed?.aspectRatioPresetId ?? DEFAULT_ASPECT_RATIO_PRESET_ID;
-    if (bgType === "image" && aspectRatioPresetId === "recording") {
+    let aspectRatioPresetId = parsed?.aspectRatioPresetId ?? legacyImageState?.aspectRatioPresetId
+      ?? DEFAULT_ASPECT_RATIO_PRESET_ID;
+    if (bgType === "image" && get().selectedBackground && aspectRatioPresetId === "recording") {
       aspectRatioPresetId = "16:9";
     }
     set({
@@ -1164,6 +1196,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       faceCam,
       aspectRatioPresetId,
       mediaInitialized: true,
+      screenshotMarks: isScreenshot && rawState && typeof rawState === "object"
+        ? parseScreenshotEdits(rawState).marks : [],
     });
 
     const projectId = get().projectId;
@@ -1181,6 +1215,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   setBackgroundType(type) {
     set({ backgroundType: type });
+    schedulePersist(get);
+  },
+
+  setScreenshotMarks(marks) {
+    if (!get().screenshotId) return;
+    set({ screenshotMarks: marks });
     schedulePersist(get);
   },
 
@@ -1441,6 +1481,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     });
   },
   addSpeedRange(rate = DEFAULT_PLAYBACK_SPEED) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     const { duration, currentTime } = get();
     if (!(duration > 0)) return;
     const range = createSpeedRange(duration, currentTime, rate);
@@ -1459,6 +1500,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
   updateSpeedRange(id, patch) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     const duration = get().duration;
     set((s) => ({
       speedRanges: s.speedRanges.map((range) =>
@@ -1468,6 +1510,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
   moveSpeedRange(id, start, end) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     const duration = get().duration;
     if (!(duration > 0)) return;
     set((s) => ({
@@ -1477,6 +1520,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }));
   },
   removeSpeedRange(id) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     set((s) => ({
       speedRanges: s.speedRanges.filter((range) => range.id !== id),
       selectedSpeedRangeId: s.selectedSpeedRangeId === id ? null : s.selectedSpeedRangeId,
@@ -1484,6 +1528,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
   selectSpeedRange(id) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     set({
       selectedSpeedRangeId: id,
       selectedGapIndex: null,
@@ -1496,10 +1541,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     });
   },
   setGlobalSpeed(rate) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     set({ globalSpeed: clampPlaybackSpeed(rate) });
     schedulePersist(get);
   },
   autoSpeedTyping() {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "speed")) return;
     const { duration, recordingMetadata } = get();
     const detected = detectTypingSpeedRanges(recordingMetadata, duration);
     if (detected.length === 0) return;
@@ -1662,6 +1709,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   addFragment(mode) {
+    if (get().screenshotId && (mode === "speed" || mode === "trim")) return;
     const { duration, currentTime, segments, recordingMetadata } = get();
     if (duration <= 0) return;
     const before = snapshotOf(get());
@@ -1861,6 +1909,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       get();
 
     if (selectedGapIndex !== null) {
+      if (get().screenshotId) {
+        set({ selectedGapIndex: null });
+        return;
+      }
       const gaps = computeTrimGaps(segments, duration);
       const gap = gaps[selectedGapIndex];
       if (!gap) {
@@ -1918,6 +1970,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
 
     if (selectedSpeedRangeId) {
+      if (get().screenshotId) {
+        set({ selectedSpeedRangeId: null });
+        return;
+      }
       const next = get().speedRanges.filter((range) => range.id !== selectedSpeedRangeId);
       if (next.length === get().speedRanges.length) return;
       set({ speedRanges: next, selectedSpeedRangeId: null });
@@ -1936,6 +1992,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
 
     if (selectedSegmentId) {
+      if (get().screenshotId) {
+        set({ selectedSegmentId: null });
+        return;
+      }
       const next = removeSegmentById(segments, selectedSegmentId);
       if (next.length === segments.length) return;
       set({ segments: next, selectedSegmentId: null });
@@ -1945,6 +2005,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   restoreTrimGap(start, end) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "source-trim")) return;
     const { duration, segments } = get();
     if (duration <= 0) return;
     const before = snapshotOf(get());
@@ -1964,6 +2025,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   moveTrimGap(gapIndex, start, end) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "source-trim")) return;
     const { duration, segments } = get();
     if (duration <= 0) return;
     const s = Math.max(0, Math.min(start, end));
@@ -1976,12 +2038,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   resizeTrimGap(gapIndex, edge, time) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "source-trim")) return;
     const { duration, segments } = get();
     if (duration <= 0) return;
     set({ segments: resizeTrimGapAtIndex(segments, gapIndex, edge, time, duration) });
   },
 
   resizeSegment(id, edge, time) {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "source-trim")) return;
     const { duration, segments } = get();
     if (duration <= 0) return;
     set({
@@ -2070,6 +2134,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   splitAt(args) {
+    const kind = get().screenshotId ? "screenshot" : "video";
+    if (args.kind === "trim" && !supportsEditorFeature(kind, "source-trim")) return false;
+    if (args.kind === "speed" && !supportsEditorFeature(kind, "speed")) return false;
     const { duration, segments, zoomFragments, perspectiveFragments } = get();
     if (duration <= 0) return false;
     const before = snapshotOf(get());
@@ -2195,6 +2262,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   cutAtPlayhead() {
+    if (!supportsEditorFeature(get().screenshotId ? "screenshot" : "video", "source-trim")) return false;
     return get().splitAt({ kind: "trim", time: get().currentTime });
   },
 

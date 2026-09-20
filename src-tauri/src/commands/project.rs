@@ -47,6 +47,15 @@ pub fn ensure_proxy(
     state: State<AppState>,
     project_id: String,
 ) -> AppResult<ProxyStatus> {
+    if let Ok(image) = state.store.load_screenshot(&project_id) {
+        // The timeline clock is already a short, seekable MP4. The original
+        // PNG, not this MP4, is the image preview/export source.
+        return Ok(ProxyStatus {
+            proxy: Some("screen.mp4".into()),
+            width: image.width,
+            height: image.height,
+        });
+    }
     let (width, height) = state.store.recording_size(&project_id).unwrap_or((0, 0));
     let dir = state.store.project_dir(&project_id)?;
 

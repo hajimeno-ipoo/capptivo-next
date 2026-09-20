@@ -5,9 +5,9 @@
  * edge) because every look value the user tunes — device padding, face-cam
  * size, corner radius, caption font size — is an absolute pixel number
  * calibrated against it. Outputs smaller than that (GIF) therefore need a
- * downscale, and doing it with a Canvas2D `drawImage` off the GPU canvas is a
- * full stall: it forces a readback, a CPU resample and a re-upload for every
- * frame.
+ * downscale. Larger still-image outputs render that same scene straight into
+ * the full-size GPU surface, so the source texture is not flattened to 1920
+ * before it reaches a 4K or 5K canvas.
  *
  * So we keep it on the GPU. The scene renders into a render texture, which is
  * then blitted down in successive halving steps before the final step to the
@@ -15,11 +15,12 @@
  * bilinear tap: a single bilinear step from 1920 → 800 samples 4 texels out of
  * every ~6, which aliases exactly where fine UI text lives.
  *
- * When output size == composition size (all video exports and the preview) the
- * scene renders straight to the canvas and none of this runs.
+ * Equal-size and larger outputs render directly to the canvas. Only smaller or
+ * mixed-axis outputs allocate the intermediate downscale textures.
  */
 
-import { Container, RenderTexture, Sprite, type Renderer } from "pixi.js";
+import { Container, Matrix, RenderTexture, Sprite, type Renderer } from "pixi.js";
+import { outputPresentationPlan } from "./outputSizing";
 
 /** Never halve past this ratio — below it a direct bilinear step is exact enough. */
 const HALVING_STOP_RATIO = 1.6;
@@ -28,6 +29,7 @@ export class OutputSurface {
   private sceneTarget: RenderTexture | null = null;
   private steps: RenderTexture[] = [];
   private readonly blit = new Sprite();
+  private readonly outputTransform = new Matrix();
 
   constructor(
     private readonly renderer: Renderer,
@@ -69,7 +71,32 @@ export class OutputSurface {
   present(stage: Container): void {
     const target = this.sceneTarget;
     if (!target) {
-      this.renderer.render(stage);
+      const plan = outputPresentationPlan(
+        this.compositionWidth,
+        this.compositionHeight,
+        this.outputWidth,
+        this.outputHeight,
+      );
+      if (plan.kind !== "direct" || (plan.scaleX === 1 && plan.scaleY === 1)) {
+        this.renderer.render(stage);
+      } else {
+        // High-resolution stills keep the shared 1920-reference scene, but
+        // rasterize it straight into the full-size output. Rendering the
+        // source texture at this scale preserves its original pixels; the old
+        // path first flattened the whole scene at 1920 and then enlarged it.
+        this.outputTransform.set(
+          plan.scaleX,
+          0,
+          0,
+          plan.scaleY,
+          0,
+          0,
+        );
+        this.renderer.render({
+          container: stage,
+          transform: this.outputTransform,
+        });
+      }
       return;
     }
 
@@ -97,10 +124,12 @@ export class OutputSurface {
   }
 
   private rebuild(): void {
-    if (
-      this.compositionWidth === this.outputWidth &&
-      this.compositionHeight === this.outputHeight
-    ) {
+    if (outputPresentationPlan(
+      this.compositionWidth,
+      this.compositionHeight,
+      this.outputWidth,
+      this.outputHeight,
+    ).kind === "direct") {
       return;
     }
 

@@ -248,10 +248,23 @@ fn stream_config_pixels(window: &UnsafeSCWindow, displays: &[ShareId<UnsafeSCDis
     picker_sources::points_to_even_pixels(rect.width, rect.height, scale)
 }
 
-/// macOS 14+: exclude window shadow from single-window capture.
+/// macOS 14+: exclude window shadow and keep portions outside the display
+/// bounds in single-window capture. Without the latter, SCK fills the clipped
+/// portion of a partially off-screen window with black pixels.
 fn tune_window_stream_config(config_ref: &UnsafeStreamConfigurationRef) {
     unsafe {
-        let _: () = msg_send![config_ref, setIgnoreShadowsSingleWindow: BOOL::from(true)];
+        let supports_shadow_exclusion: BOOL =
+            msg_send![config_ref, respondsToSelector: sel!(setIgnoreShadowsSingleWindow:)];
+        if supports_shadow_exclusion != 0 {
+            let _: () =
+                msg_send![config_ref, setIgnoreShadowsSingleWindow: BOOL::from(true)];
+        }
+        let supports_global_clip: BOOL =
+            msg_send![config_ref, respondsToSelector: sel!(setIgnoreGlobalClipSingleWindow:)];
+        if supports_global_clip != 0 {
+            let _: () =
+                msg_send![config_ref, setIgnoreGlobalClipSingleWindow: BOOL::from(true)];
+        }
     }
 }
 

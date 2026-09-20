@@ -7,5 +7,5 @@ pub mod proxy;
 pub mod store;
 pub mod thumbnail;
 
-pub use model::{Project, ProjectSummary};
+pub use model::{Project, ProjectSummary, ScreenshotProject, ScreenshotSummary};
 pub use store::ProjectStore;

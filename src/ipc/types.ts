@@ -103,6 +103,22 @@ export interface ProjectSummary {
   thumbnail: string | null;
 }
 
+export interface ScreenshotSummary {
+  id: string;
+  title: string | null;
+  createdAt: string;
+  thumbnail: string;
+}
+
+export interface ScreenshotProject extends ScreenshotSummary {
+  schemaVersion: number;
+  sourceTitle: string;
+  width: number;
+  height: number;
+  original: string;
+  editorState: unknown | null;
+}
+
 export interface Project {
   schemaVersion: number;
   id: string;

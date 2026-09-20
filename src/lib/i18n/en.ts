@@ -17,6 +17,8 @@ export const en = {
 
   "panel.look.title": "Appearance",
   "panel.look.subtitle": "Background and composition",
+  "panel.image.title": "Image",
+  "panel.image.subtitle": "Annotations on the original image",
   "panel.cursor.title": "Cursor",
   "panel.cursor.subtitle": "Pointer style and motion",
   "panel.camera.title": "Face cam",
@@ -353,6 +355,8 @@ export const en = {
   "recorder.recordings": "Recordings",
   "recorder.close": "Close",
   "recorder.record": "Record",
+  "recorder.screenshot": "Screenshot",
+  "recorder.captureKind": "Capture type",
   "recorder.mode.display": "Display",
   "recorder.mode.window": "Window",
   "recorder.mode.area": "Area",

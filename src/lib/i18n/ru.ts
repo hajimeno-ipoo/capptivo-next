@@ -19,6 +19,8 @@ export const ru: Record<TranslationKey, string> = {
 
   "panel.look.title": "Оформление",
   "panel.look.subtitle": "Фон и композиция",
+  "panel.image.title": "Изображение",
+  "panel.image.subtitle": "Аннотации на исходном изображении",
   "panel.cursor.title": "Курсор",
   "panel.cursor.subtitle": "Стиль и движение указателя",
   "panel.camera.title": "Камера",
@@ -354,6 +356,8 @@ export const ru: Record<TranslationKey, string> = {
   "recorder.recordings": "Записи",
   "recorder.close": "Закрыть",
   "recorder.record": "Запись",
+  "recorder.screenshot": "Снимок экрана",
+  "recorder.captureKind": "Тип захвата",
   "recorder.mode.display": "Экран",
   "recorder.mode.window": "Окно",
   "recorder.mode.area": "Область",

@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tauri::{AppHandle, Emitter, Manager};
 
 pub struct AppState {
@@ -19,6 +20,7 @@ pub struct AppState {
     /// The recording currently being captured (set on start, cleared on stop).
     /// Holds the config so `stop_recording` can finalize the project manifest.
     pub current_project: Mutex<Option<CurrentProject>>,
+    pub screenshot_busy: AtomicBool,
     /// Open export file sinks, keyed by handle id (see `commands::export`).
     pub exports: Mutex<HashMap<u64, ExportSink>>,
     /// Annex-B H.264 → ffmpeg MP4 sessions (see `commands::export` h264 stream).
@@ -78,6 +80,7 @@ impl AppState {
             recorder,
             store,
             current_project: Mutex::new(None),
+            screenshot_busy: AtomicBool::new(false),
             exports: Mutex::new(HashMap::new()),
             h264_exports: Mutex::new(HashMap::new()),
             rawvideo_exports: Mutex::new(HashMap::new()),
