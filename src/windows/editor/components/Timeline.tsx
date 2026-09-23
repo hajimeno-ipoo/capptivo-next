@@ -1152,7 +1152,7 @@ export function Timeline({
               <div
                 key={frag.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: ZOOM_TOP + BLOCK_INSET,
                   height: BLOCK_H,
@@ -1160,6 +1160,11 @@ export function Timeline({
                   width: `${((frag.end - frag.start) / safeDuration) * 100}%`,
                 }}
                 onPointerDown={(e) => {
+                  if (isScreenshot) {
+                    e.stopPropagation();
+                    selectZoomFragment(frag.id);
+                    return;
+                  }
                   if (splitTool) return;
                   if ((e.target as HTMLElement).closest("[data-handle]")) return;
                   const pointerTime = clientToTime(e.clientX);
@@ -1182,6 +1187,7 @@ export function Timeline({
                 <ZoomTimelineBlock
                   fragment={frag}
                   selected={selected}
+                  resizable={!isScreenshot}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, {
                       kind: "zoom-edge",
@@ -1201,7 +1207,7 @@ export function Timeline({
               <div
                 key={fragment.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: PERSPECTIVE_TOP + BLOCK_INSET,
                   height: BLOCK_H,
@@ -1209,6 +1215,11 @@ export function Timeline({
                   width: `${((fragment.end - fragment.start) / safeDuration) * 100}%`,
                 }}
                 onPointerDown={(e) => {
+                  if (isScreenshot) {
+                    e.stopPropagation();
+                    selectPerspectiveFragment(fragment.id);
+                    return;
+                  }
                   if (splitTool) return;
                   if ((e.target as HTMLElement).closest("[data-handle]")) return;
                   const pointerTime = clientToTime(e.clientX);
@@ -1237,6 +1248,7 @@ export function Timeline({
                 <PerspectiveTimelineBlock
                   fragment={fragment}
                   selected={selected}
+                  resizable={!isScreenshot}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, {
                       kind: "perspective-edge",
@@ -1257,7 +1269,7 @@ export function Timeline({
               <div
                 key={region.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: laneTop + BLOCK_INSET,
                   height: BLOCK_H,
@@ -1265,6 +1277,11 @@ export function Timeline({
                   width: `${((region.end - region.start) / safeDuration) * 100}%`,
                 }}
                 onPointerDown={(e) => {
+                  if (isScreenshot) {
+                    e.stopPropagation();
+                    selectBlurRegion(region.id);
+                    return;
+                  }
                   if (splitTool) return;
                   if ((e.target as HTMLElement).closest("[data-handle]")) return;
                   const pointerTime = clientToTime(e.clientX);
@@ -1291,6 +1308,7 @@ export function Timeline({
                 <OverlayTimelineBlock
                   region={region}
                   selected={selected}
+                  resizable={!isScreenshot}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "overlay-edge", regionId: region.id, edge })
                   }
@@ -1355,7 +1373,7 @@ export function Timeline({
               <div
                 key={clip.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: TEXT_TOP + BLOCK_INSET,
                   height: BLOCK_H,
@@ -1363,6 +1381,11 @@ export function Timeline({
                   width: `${((clip.end - clip.start) / safeDuration) * 100}%`,
                 }}
                 onPointerDown={(e) => {
+                  if (isScreenshot) {
+                    e.stopPropagation();
+                    selectTextClip(clip.id);
+                    return;
+                  }
                   if (splitTool) return;
                   if ((e.target as HTMLElement).closest("[data-handle]")) return;
                   const pointerTime = clientToTime(e.clientX);
@@ -1389,6 +1412,7 @@ export function Timeline({
                 <TextTimelineBlock
                   clip={clip}
                   selected={selected}
+                  resizable={!isScreenshot}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "text-edge", clipId: clip.id, edge })
                   }

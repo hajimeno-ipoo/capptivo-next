@@ -8,6 +8,8 @@
 use crate::cursor::CaptureRect;
 use crate::error::{AppError, AppResult};
 use core_graphics::display::CGDisplay;
+use objc::runtime::{Class, Object};
+use objc::{msg_send, sel, sel_impl};
 use screencapturekit_sys::shareable_content::{UnsafeSCShareableContent, UnsafeSCDisplay, UnsafeSCWindow};
 use objc_id::ShareId;
 
@@ -224,6 +226,7 @@ fn is_recordable_window(w: &UnsafeSCWindow, own_pid: i32) -> bool {
     let owner = w.get_owning_application();
     let owner_pid = owner.as_ref().map(|o| o.get_process_id()).unwrap_or(-1);
     let owner_bundle = owner.and_then(|o| o.get_bundle_identifier());
+    let owner_activation_policy = running_application_activation_policy(owner_pid);
 
     window_is_recordable(WindowProbe {
         is_on_screen: w.get_is_on_screen() != 0,
@@ -234,6 +237,23 @@ fn is_recordable_window(w: &UnsafeSCWindow, own_pid: i32) -> bool {
         owner_pid,
         own_pid,
         owner_bundle: owner_bundle.as_deref(),
+        owner_activation_policy,
+    })
+}
+
+/// AppKit distinguishes ordinary Dock apps from accessory/background helpers.
+fn running_application_activation_policy(pid: i32) -> Option<isize> {
+    if pid < 0 {
+        return None;
+    }
+    let class = Class::get("NSRunningApplication")?;
+    objc::rc::autoreleasepool(|| unsafe {
+        let app: *mut Object = msg_send![class, runningApplicationWithProcessIdentifier: pid];
+        if app.is_null() {
+            None
+        } else {
+            Some(msg_send![app, activationPolicy])
+        }
     })
 }
 
@@ -248,16 +268,22 @@ struct WindowProbe<'a> {
     owner_pid: i32,
     own_pid: i32,
     owner_bundle: Option<&'a str>,
+    owner_activation_policy: Option<isize>,
 }
 
 fn window_is_recordable(p: WindowProbe<'_>) -> bool {
     if p.width < MIN_WINDOW_SIDE || p.height < MIN_WINDOW_SIDE {
         return false;
     }
-    if p.title.trim().is_empty() || is_system_chrome_title(p.title) {
+    if is_system_chrome_title(p.title) {
         return false;
     }
     if p.owner_pid < 0 || p.owner_pid == p.own_pid {
+        return false;
+    }
+    // Accessory (LSUIElement) and background-only processes own utility UI,
+    // not the ordinary app windows the recorder menu is meant to offer.
+    if p.owner_activation_policy.is_some_and(|policy| policy != 0) {
         return false;
     }
     if let Some(bundle) = p.owner_bundle {
@@ -282,7 +308,9 @@ fn window_label(w: &UnsafeSCWindow) -> String {
         .get_owning_application()
         .and_then(|o| o.get_application_name())
         .unwrap_or_default();
-    if app.is_empty() || title.contains(&app) {
+    if title.trim().is_empty() {
+        app
+    } else if app.is_empty() || title.contains(&app) {
         title
     } else {
         format!("{app} — {title}")
@@ -325,6 +353,7 @@ mod tests {
             owner_pid: 42,
             own_pid: 1,
             owner_bundle: Some("com.example.app"),
+            owner_activation_policy: Some(0),
         }
     }
 
@@ -353,6 +382,11 @@ mod tests {
     }
 
     #[test]
+    fn accepts_untitled_regular_window() {
+        assert!(window_is_recordable(probe("")));
+    }
+
+    #[test]
     fn rejects_dock_layer_even_with_title() {
         let mut p = probe("Safari");
         p.layer = 20;
@@ -370,6 +404,7 @@ mod tests {
             owner_pid: 42,
             own_pid: 1,
             owner_bundle: Some("com.apple.dt.Xcode"),
+            owner_activation_policy: Some(0),
         };
         assert!(!window_is_recordable(p));
     }
@@ -385,6 +420,7 @@ mod tests {
             owner_pid: 42,
             own_pid: 1,
             owner_bundle: Some("com.apple.Notes"),
+            owner_activation_policy: Some(0),
         };
         assert!(!window_is_recordable(p));
     }
@@ -397,6 +433,17 @@ mod tests {
 
         let p = probe("Fullscreen Backdrop");
         assert!(!window_is_recordable(p));
+    }
+
+    #[test]
+    fn rejects_accessory_app_windows() {
+        let mut p = probe("Helper window");
+        p.owner_activation_policy = Some(1);
+        assert!(!window_is_recordable(p));
+        p.owner_activation_policy = Some(2);
+        assert!(!window_is_recordable(p));
+        p.owner_activation_policy = Some(0);
+        assert!(window_is_recordable(p));
     }
 
     #[test]

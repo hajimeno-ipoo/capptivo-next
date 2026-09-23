@@ -142,6 +142,12 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
     gesture.current = null;
   };
   const selectedMark = marks.find((mark) => mark.id === selected);
+  const selectedMarkWidth = selectedMark?.kind === "path"
+    || (selectedMark?.kind === "shape" && selectedMark.shape !== "mask") ? selectedMark.width : null;
+  const selectedMarkHasWidth = selectedMarkWidth !== null;
+  useEffect(() => {
+    if (selectedMarkWidth !== null) setWidth(selectedMarkWidth);
+  }, [selectedMarkWidth]);
   const changeSelected = (update: (mark: ScreenshotMark) => ScreenshotMark) =>
     commit(marks.map((mark) => mark.id === selected ? update(mark) : mark));
   return <div className={visible ? "space-y-5" : "hidden"}>
@@ -157,7 +163,12 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
     <div className="flex items-center gap-2"><input type="color" aria-label="描画色" value={color}
       onChange={(event) => setColor(event.target.value)} /><span className="text-xs">描画色</span></div>
     <label className="block text-xs">線の太さ {width}<input type="range" min={1} max={32} value={width}
-      onChange={(event) => setWidth(Number(event.target.value))} className="w-full accent-primary" /></label>
+      onChange={(event) => {
+        const nextWidth = Number(event.target.value);
+        setWidth(nextWidth);
+        if (selectedMarkHasWidth) changeSelected((mark) => mark.kind === "path"
+          || (mark.kind === "shape" && mark.shape !== "mask") ? { ...mark, width: nextWidth } : mark);
+      }} className="w-full accent-primary" /></label>
     {selectedMark && <div className="space-y-2 border-t border-border pt-4">
       <p className="text-xs font-semibold">選択中の注釈</p>
       {selectedMark.kind === "text" && <>

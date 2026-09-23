@@ -605,6 +605,9 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
 
   selectSource(id) {
     set({ selectedSourceId: id });
+    if (id.startsWith("window:")) {
+      void commands.focusWindowSource(id).catch((error) => reportError(describeError(error)));
+    }
   },
 
   setOption(key, value) {

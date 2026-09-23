@@ -46,6 +46,7 @@ import { trackVideoFrames, videoFrameStamp } from "../render/videoFrameTrack";
 import { useStageDimensions } from "../lib/useStageDimensions";
 import { resolveZoomCompositionLayout } from "../lib/composition";
 import { getZoomPanAtTime } from "../lib/zoomCache";
+import { SCREENSHOT_RENDER_TIME } from "../lib/screenshotStaticTimeline";
 import {
   isEditorTypingTarget,
   presentableVideoTime,
@@ -381,7 +382,11 @@ export function PreviewStage({
       // position is stale (WKWebView reports the pre-seek time for as long as
       // `seeking` holds), and the requested time is what the frame means.
       const screenRolling = screenClockIsRolling(video);
-      const t = screenRolling && video ? video.currentTime : currentTime;
+      const t = store.screenshotId
+        ? SCREENSHOT_RENDER_TIME
+        : screenRolling && video
+          ? video.currentTime
+          : currentTime;
 
       // Read-only: `syncFaceCam` owns the element. All this decides is whether
       // the cam has a picture for `t` at all — the compositor is handed nothing
@@ -759,7 +764,13 @@ export function PreviewStage({
     if (!comp) return;
     comp.resize(stage.width, stage.height, screenshotOutput.width, screenshotOutput.height);
     requestPaintRef.current();
-  }, [stage.width, stage.height, screenshotId, screenshotOutput.width, screenshotOutput.height]);
+  }, [
+    stage.width,
+    stage.height,
+    screenshotId,
+    screenshotOutput.width,
+    screenshotOutput.height,
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;

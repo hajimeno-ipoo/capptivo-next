@@ -59,6 +59,8 @@ export const commands = {
   /** macOS: unminimize / raise a window source during the countdown. */
   prepareWindowCapture: (sourceId: string) =>
     invoke<void>("prepare_window_capture", { sourceId }),
+  focusWindowSource: (sourceId: string) =>
+    invoke<void>("focus_window_source", { sourceId }),
   startRecording: (config: RecorderConfig) =>
     invoke<void>("start_recording", { config }),
   pauseRecording: () => invoke<void>("pause_recording"),

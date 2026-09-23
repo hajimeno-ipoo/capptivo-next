@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Plus } from "lucide-react";
-import { getCompositionLayout, type PerspectiveFragment } from "@/engine";
+import { getCompositionLayout, PERSPECTIVE_PIVOT_POINTS, type PerspectiveFragment, type PerspectivePivot } from "@/engine";
 
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
 import { Slider } from "@/components/ui/slider";
@@ -647,32 +647,131 @@ function ThreeDPerspective({
   stageWidth: number;
 }) {
   const { t } = useI18n();
-  const drag = useRef<{ id: number; x: number; y: number; tiltX: number; tiltY: number } | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const previewSvgRef = useRef<SVGSVGElement>(null);
+  const drag = useRef<
+    | {
+        kind: "xy";
+        id: number;
+        x: number;
+        y: number;
+        knobX: number;
+        knobY: number;
+        tiltX: number;
+        tiltY: number;
+      }
+    | {
+        kind: "z";
+        id: number;
+        angle: number;
+        pivotX: number;
+        pivotY: number;
+        tiltZ: number;
+      }
+    | null
+  >(null);
+  const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    setDragPoint(null);
+  }, [fragment.id, fragment.pivot]);
 
   const clampAngle = (value: number, axis: "tiltX" | "tiltY" | "tiltZ") =>
     Math.max(PERSPECTIVE_LIMITS[axis].min, Math.min(PERSPECTIVE_LIMITS[axis].max, value));
 
-  const onPreviewPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const previewPoint = (clientX: number, clientY: number) => {
+    const svg = previewSvgRef.current;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return null;
+    const pointer = svg.createSVGPoint();
+    pointer.x = clientX;
+    pointer.y = clientY;
+    return pointer.matrixTransform(matrix.inverse());
+  };
+
+  const handlePoint = (handle: PerspectivePivot) => {
+    const point = PERSPECTIVE_PIVOT_POINTS.find((candidate) => candidate.id === handle)!;
+    return { x: 30 + 140 * point.x, y: 24 + 100 * point.y };
+  };
+
+  const initialKnobPoint = (handle: PerspectivePivot) => {
+    const base = handlePoint(handle);
+    if (handle === "center") return { x: base.x + 27, y: base.y + 27 };
+    const point = PERSPECTIVE_PIVOT_POINTS.find((candidate) => candidate.id === handle)!;
+    const xDirection = point.x === 0 ? 1 : point.x === 1 ? -1 : 0;
+    const yDirection = point.y === 0 ? 1 : point.y === 1 ? -1 : 0;
+    return {
+      x: base.x + xDirection * (yDirection === 0 ? 30 : 24),
+      y: base.y + yDirection * (xDirection === 0 ? 30 : 24),
+    };
+  };
+
+  const beginXYDrag = (event: ReactPointerEvent<SVGGElement>, knob: { x: number; y: number }) => {
     if (event.button !== 0) return;
+    event.stopPropagation();
+    const pointer = previewPoint(event.clientX, event.clientY);
+    if (!pointer) return;
     drag.current = {
+      kind: "xy",
       id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
+      x: pointer.x,
+      y: pointer.y,
+      knobX: knob.x,
+      knobY: knob.y,
       tiltX: fragment.tiltX,
       tiltY: fragment.tiltY,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    previewRef.current?.setPointerCapture(event.pointerId);
   };
 
-  const onPreviewPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginZDrag = (event: ReactPointerEvent<SVGGElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const pointer = previewPoint(event.clientX, event.clientY);
+    if (!pointer) return;
+    const pivot = handlePoint(fragment.pivot ?? "center");
+    drag.current = {
+      kind: "z",
+      id: event.pointerId,
+      angle: Math.atan2(pointer.y - pivot.y, pointer.x - pivot.x),
+      pivotX: pivot.x,
+      pivotY: pivot.y,
+      tiltZ: fragment.tiltZ,
+    };
+    previewRef.current?.setPointerCapture(event.pointerId);
+  };
+
+  const onHandlePointerDown = (event: ReactPointerEvent<SVGGElement>, handle: PerspectivePivot) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    drag.current = null;
+    setDragPoint(null);
+    if (fragment.pivot !== handle) updateFragment((current) => ({ ...current, pivot: handle }));
+  };
+
+  const onPreviewPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const start = drag.current;
     if (!start || start.id !== event.pointerId) return;
-    const tiltX = clampAngle(Math.round(start.tiltX - (event.clientY - start.y) * 0.4), "tiltX");
-    const tiltY = clampAngle(Math.round(start.tiltY + (event.clientX - start.x) * 0.4), "tiltY");
+    const point = previewPoint(event.clientX, event.clientY);
+    if (!point) return;
+    if (start.kind === "z") {
+      if (Math.hypot(point.x - start.pivotX, point.y - start.pivotY) < 6) return;
+      const angle = Math.atan2(point.y - start.pivotY, point.x - start.pivotX);
+      const delta = Math.atan2(Math.sin(angle - start.angle), Math.cos(angle - start.angle));
+      const tiltZ = clampAngle(Math.round(start.tiltZ + delta * (180 / Math.PI)), "tiltZ");
+      updateFragment((current) => ({ ...current, tiltZ }));
+      return;
+    }
+    setDragPoint({
+      x: Math.max(6, Math.min(194, start.knobX + point.x - start.x)),
+      y: Math.max(6, Math.min(144, start.knobY + point.y - start.y)),
+    });
+    const tiltX = clampAngle(Math.round(start.tiltX - (point.y - start.y) * 0.9), "tiltX");
+    const tiltY = clampAngle(Math.round(start.tiltY + (point.x - start.x) * 0.65), "tiltY");
     updateFragment((current) => ({ ...current, tiltX, tiltY }));
   };
 
   const applyPreset = (values: PerspectivePreset) => {
+    setDragPoint(null);
     updateFragment((current) => ({
       ...current,
       tiltX: values.tiltX,
@@ -697,6 +796,22 @@ function ThreeDPerspective({
     y: corners[a].y + (corners[b].y - corners[a].y) * amount,
   });
   const points = corners.map(({ x, y }) => `${x},${y}`).join(" ");
+  const selectedHandle = fragment.pivot ?? "center";
+  const selectedPoint = handlePoint(selectedHandle);
+  const knob = dragPoint ?? initialKnobPoint(selectedHandle);
+  const initialKnob = initialKnobPoint(selectedHandle);
+  const knobDirection = Math.atan2(initialKnob.y - selectedPoint.y, initialKnob.x - selectedPoint.x);
+  const zArcRadius = 17;
+  const zArcStart = knobDirection + Math.PI / 4;
+  const zArcEnd = zArcStart + Math.PI * 1.5;
+  const arcPoint = (angle: number) => ({
+    x: selectedPoint.x + zArcRadius * Math.cos(angle),
+    y: selectedPoint.y + zArcRadius * Math.sin(angle),
+  });
+  const zArcFrom = arcPoint(zArcStart);
+  const zArcTo = arcPoint(zArcEnd);
+  const zArcPath = `M ${zArcFrom.x} ${zArcFrom.y} A ${zArcRadius} ${zArcRadius} 0 1 1 ${zArcTo.x} ${zArcTo.y}`;
+  const zIndicator = arcPoint(knobDirection + Math.PI + fragment.tiltZ * (Math.PI / 180));
   const previewGradient = `three-d-reflection-${fragment.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   return (
@@ -786,55 +901,122 @@ function ThreeDPerspective({
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          aria-label={t("look.threeD.drag")}
-          title={t("look.threeD.drag")}
-          onPointerDown={onPreviewPointerDown}
-          onPointerMove={onPreviewPointerMove}
-          onPointerUp={() => { drag.current = null; }}
-          onPointerCancel={() => { drag.current = null; }}
-          onKeyDown={(event) => {
-            if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
-            event.preventDefault();
-            const step = event.shiftKey ? 5 : 1;
-            updateFragment((current) => ({
-              ...current,
-              tiltX: clampAngle(current.tiltX + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0), "tiltX"),
-              tiltY: clampAngle(current.tiltY + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0), "tiltY"),
-            }));
-          }}
-          className="relative min-h-35 overflow-hidden rounded-lg border border-border bg-muted/50 cursor-grab touch-none active:cursor-grabbing"
-        >
-          <svg viewBox="0 0 200 150" className="h-full w-full" aria-hidden="true">
-            <defs>
-              <pattern id={previewGradient} width="9" height="9" patternUnits="userSpaceOnUse">
-                <circle cx="2" cy="2" r="0.7" fill="currentColor" opacity="0.25" />
-              </pattern>
-              <linearGradient id={`${previewGradient}-shine`} x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="white" stopOpacity={fragment.reflectionStrength / 100 * 0.75} />
-                <stop offset={fragment.reflectionStyle === "sharp" ? "28%" : "75%"} stopColor="white" stopOpacity="0" />
-                {fragment.reflectionStyle === "sharp" && (
-                  <stop offset="65%" stopColor="white" stopOpacity={fragment.reflectionStrength / 100 * 0.5} />
-                )}
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <rect width="200" height="150" rx="12" fill="currentColor" opacity="0.08" />
-            <polygon points={points} fill="currentColor" opacity="0.12" />
-            <polygon points={points} fill={`url(#${previewGradient})`} stroke="currentColor" strokeWidth="1.5" />
-            <polygon points={points} fill={`url(#${previewGradient}-shine)`} />
-            {[0.27, 0.42, 0.57].map((ratio) => {
-              const left = point(0, 3, ratio);
-              const right = point(1, 2, ratio);
-              return <line key={ratio} x1={left.x + 14} y1={left.y} x2={right.x - 14} y2={right.y} stroke="currentColor" strokeWidth="3" opacity="0.35" />;
-            })}
-            {corners.map(({ x, y }, index) => (
-              <circle key={index} cx={x} cy={y} r="3.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
-            ))}
-            <circle cx="100" cy="74" r="7" fill="white" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-        </button>
+        <div className="space-y-1">
+          <div
+            ref={previewRef}
+            role="group"
+            aria-label={t("look.threeD.drag")}
+            title={t("look.threeD.drag")}
+            onPointerMove={onPreviewPointerMove}
+            onPointerUp={() => { drag.current = null; }}
+            onPointerCancel={() => { drag.current = null; }}
+            onLostPointerCapture={() => { drag.current = null; }}
+            className="relative min-h-35 overflow-hidden rounded-lg border border-border bg-muted/50 touch-none"
+          >
+            <svg ref={previewSvgRef} viewBox="0 0 200 150" className="h-full w-full">
+              <defs>
+                <pattern id={previewGradient} width="9" height="9" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="0.7" fill="currentColor" opacity="0.25" />
+                </pattern>
+                <linearGradient id={`${previewGradient}-shine`} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="white" stopOpacity={fragment.reflectionStrength / 100 * 0.75} />
+                  <stop offset={fragment.reflectionStyle === "sharp" ? "28%" : "75%"} stopColor="white" stopOpacity="0" />
+                  {fragment.reflectionStyle === "sharp" && (
+                    <stop offset="65%" stopColor="white" stopOpacity={fragment.reflectionStrength / 100 * 0.5} />
+                  )}
+                  <stop offset="100%" stopColor="white" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <rect width="200" height="150" rx="12" fill="currentColor" opacity="0.08" />
+              <polygon points={points} fill="currentColor" opacity="0.12" />
+              <polygon points={points} fill={`url(#${previewGradient})`} stroke="currentColor" strokeWidth="1.5" />
+              <polygon points={points} fill={`url(#${previewGradient}-shine)`} />
+              {[0.27, 0.42, 0.57].map((ratio) => {
+                const left = point(0, 3, ratio);
+                const right = point(1, 2, ratio);
+                return <line key={ratio} x1={left.x + 14} y1={left.y} x2={right.x - 14} y2={right.y} stroke="currentColor" strokeWidth="3" opacity="0.35" />;
+              })}
+              <g
+                role="button"
+                tabIndex={0}
+                aria-label={t("look.threeD.tiltZ")}
+                className="cursor-grab text-blue-500"
+                onPointerDown={beginZDrag}
+                onKeyDown={(event) => {
+                  if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const step = event.shiftKey ? 5 : 1;
+                  const direction = event.key === "ArrowUp" || event.key === "ArrowRight" ? 1 : -1;
+                  updateFragment((current) => ({ ...current, tiltZ: clampAngle(current.tiltZ + direction * step, "tiltZ") }));
+                }}
+              >
+                <path d={zArcPath} fill="none" stroke="currentColor" strokeWidth="12" opacity="0" />
+                <path d={zArcPath} fill="none" stroke="currentColor" strokeWidth="2.5" pointerEvents="none" />
+                <circle cx={zIndicator.x} cy={zIndicator.y} r="4" fill="currentColor" pointerEvents="none" />
+              </g>
+              <line x1={selectedPoint.x} y1={selectedPoint.y} x2={knob.x} y2={knob.y} stroke="currentColor" strokeWidth="1.5" opacity="0.5" pointerEvents="none" />
+              <g
+                className="cursor-grab"
+                role="button"
+                tabIndex={0}
+                aria-label={`${t("look.threeD.tiltX")} / ${t("look.threeD.tiltY")}`}
+                onPointerDown={(event) => beginXYDrag(event, knob)}
+                onKeyDown={(event) => {
+                  if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const step = event.shiftKey ? 5 : 1;
+                  updateFragment((current) => ({
+                    ...current,
+                    tiltX: clampAngle(current.tiltX + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0), "tiltX"),
+                    tiltY: clampAngle(current.tiltY + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0), "tiltY"),
+                  }));
+                }}
+              >
+                <circle cx={knob.x} cy={knob.y} r="11" fill="transparent" />
+                <circle cx={knob.x} cy={knob.y} r="7" fill="white" stroke="currentColor" strokeWidth="1.5" pointerEvents="none" />
+              </g>
+              {PERSPECTIVE_PIVOT_POINTS.map(({ id }) => {
+                const { x, y } = handlePoint(id);
+                return (
+                  <g
+                    key={id}
+                    className={cn("cursor-pointer", selectedHandle === id && "text-primary")}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedHandle === id}
+                    aria-label={`${t("look.threeD")} ${id}`}
+                    onPointerDown={(event) => onHandlePointerDown(event, id)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDragPoint(null);
+                      updateFragment((current) => ({ ...current, pivot: id }));
+                    }}
+                  >
+                    <circle cx={x} cy={y} r="11" fill="transparent" />
+                    {selectedHandle === id && <circle cx={x} cy={y} r="9" fill="none" stroke="currentColor" strokeWidth="1.5" pointerEvents="none" />}
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={selectedHandle === id ? "6" : "4"}
+                      fill="white"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      pointerEvents="none"
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <div aria-hidden="true" className="flex justify-between px-1 text-[10px] font-medium text-muted-foreground">
+            <span>X/Y ○</span>
+            <span className="text-blue-500">Z ◌</span>
+          </div>
+        </div>
       </div>
       <PerspectiveSlider
         id="three-d-distance"

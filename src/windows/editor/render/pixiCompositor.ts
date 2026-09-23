@@ -11,6 +11,7 @@ import {
   BlurFilter,
   Container,
   Graphics,
+  Matrix,
   PerspectiveMesh,
   Rectangle,
   RenderTexture,
@@ -63,6 +64,7 @@ import {
 import { ComposeProfiler } from "./composeProfiler";
 import { CanvasLayer } from "./pixi/canvasLayer";
 import { OutputSurface } from "./pixi/outputSurface";
+import { perspectiveRasterPlan } from "./pixi/outputSizing";
 import { PixiCursorOverlay } from "./pixi/pixiCursor";
 import { RoundedMask } from "./pixi/roundedMask";
 import { ShadowLayer } from "./pixi/shadowLayer";
@@ -99,6 +101,12 @@ export async function createPixiFrameCompositor(
   const stageLongEdge = Math.max(width, height);
   const mipmaps = options.mipmaps === true;
   const perspectiveAntialias = options.antialias !== false;
+  const initialPerspectiveRaster = perspectiveRasterPlan(
+    width,
+    height,
+    outputWidth,
+    outputHeight,
+  );
 
   const stage = new Container({ label: "stage" });
 
@@ -126,8 +134,11 @@ export async function createPixiFrameCompositor(
    * while a 3D look is active; the other stage layers remain untouched.
    */
   let perspectiveTexture: RenderTexture | null = null;
-  let perspectiveTextureWidth = width;
-  let perspectiveTextureHeight = height;
+  let perspectiveTextureWidth = initialPerspectiveRaster.width;
+  let perspectiveTextureHeight = initialPerspectiveRaster.height;
+  let perspectiveRenderScaleX = initialPerspectiveRaster.scaleX;
+  let perspectiveRenderScaleY = initialPerspectiveRaster.scaleY;
+  const perspectiveRenderTransform = new Matrix();
   const perspectiveMesh = new PerspectiveMesh({
     // Keep the default (flat) path allocation-free. The full-size render
     // texture is created only after a non-zero 3D look is selected.
@@ -209,7 +220,12 @@ export async function createPixiFrameCompositor(
     height = nextHeight;
     outputWidth = nextOutputWidth;
     outputHeight = nextOutputHeight;
-    resizePerspectiveTexture(nextWidth, nextHeight);
+    resizePerspectiveTexture(
+      nextWidth,
+      nextHeight,
+      nextOutputWidth,
+      nextOutputHeight,
+    );
     renderer.resize(outputWidth, outputHeight);
     output.resize(width, height, outputWidth, outputHeight);
     backdrop.scale.set(width, height);
@@ -487,9 +503,18 @@ export async function createPixiFrameCompositor(
     // Render the already-zoomed camera subtree into a transparent texture.
     // The stage renders the mesh afterwards, so face-cam and captions stay flat.
     camera.visible = true;
+    perspectiveRenderTransform.set(
+      perspectiveRenderScaleX,
+      0,
+      0,
+      perspectiveRenderScaleY,
+      0,
+      0,
+    );
     renderer.render({
       container: camera,
       target,
+      transform: perspectiveRenderTransform,
       clear: true,
       clearColor: [0, 0, 0, 0],
     });
@@ -509,27 +534,40 @@ export async function createPixiFrameCompositor(
     perspectiveMesh.setCorners(
       0,
       0,
-      perspectiveTextureWidth,
+      width,
       0,
-      perspectiveTextureWidth,
-      perspectiveTextureHeight,
+      width,
+      height,
       0,
-      perspectiveTextureHeight,
+      height,
     );
     return perspectiveTexture;
   }
 
-  function resizePerspectiveTexture(nextWidth: number, nextHeight: number): void {
+  function resizePerspectiveTexture(
+    nextWidth: number,
+    nextHeight: number,
+    nextOutputWidth: number,
+    nextOutputHeight: number,
+  ): void {
+    const raster = perspectiveRasterPlan(
+      nextWidth,
+      nextHeight,
+      nextOutputWidth,
+      nextOutputHeight,
+    );
     const changed =
-      nextWidth !== perspectiveTextureWidth ||
-      nextHeight !== perspectiveTextureHeight;
-    perspectiveTextureWidth = nextWidth;
-    perspectiveTextureHeight = nextHeight;
+      raster.width !== perspectiveTextureWidth ||
+      raster.height !== perspectiveTextureHeight;
+    perspectiveTextureWidth = raster.width;
+    perspectiveTextureHeight = raster.height;
+    perspectiveRenderScaleX = raster.scaleX;
+    perspectiveRenderScaleY = raster.scaleY;
     if (!changed || !perspectiveTexture) return;
 
     const nextTexture = createPerspectiveTexture(
-      nextWidth,
-      nextHeight,
+      raster.width,
+      raster.height,
       perspectiveAntialias,
     );
     const previousTexture = perspectiveTexture;

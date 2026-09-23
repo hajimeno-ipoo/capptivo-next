@@ -87,6 +87,7 @@ import {
   saveLastExportSettings,
   type EditorPresetSnapshot,
 } from "./lib/editorPresets";
+import { makeScreenshotTimelineStatic } from "./lib/screenshotStaticTimeline";
 import { supportsEditorFeature } from "./lib/editorMode";
 import { loadRecordingMetadata } from "./lib/cursorLoad";
 import {
@@ -755,6 +756,10 @@ function scheduleAutoSuggestZooms(get: () => EditorStore) {
     autoSuggestTimer = null;
     const s = get();
     if (!s.mediaInitialized || !s.projectId) return;
+    if (s.screenshotId) {
+      autoSuggestDoneForProject = s.projectId;
+      return;
+    }
     if (autoSuggestDoneForProject === s.projectId) return;
     if (s.zoomFragments.length > 0) {
       autoSuggestDoneForProject = s.projectId;
@@ -781,21 +786,32 @@ function scheduleAutoSuggestZooms(get: () => EditorStore) {
   }, 450);
 }
 
-function applySnapshot(set: (p: Partial<EditorStore>) => void, snap: TimelineSnapshot) {
+function applySnapshot(
+  set: (p: Partial<EditorStore>) => void,
+  snap: TimelineSnapshot,
+  screenshotDuration: number | null = null,
+) {
   invalidateZoomKeyframesCache();
+  const timeline = screenshotDuration
+    ? makeScreenshotTimelineStatic(snap, screenshotDuration)
+    : snap;
   set({
     segments: snap.segments.map((s) => ({ ...s })),
-    zoomFragments: snap.zoomFragments.map((z) => ({ ...z, fixedRect: z.fixedRect ? { ...z.fixedRect } : undefined })),
-    perspectiveFragments: snap.perspectiveFragments.map((fragment) => ({ ...fragment })),
-    blurRegions: snap.blurRegions.map((region) => ({ ...region })),
-    speedRanges: snap.speedRanges.map((range) => ({ ...range })),
-    textClips: snap.textClips.map((clip) => ({ ...clip })),
-    globalSpeed: snap.globalSpeed,
-    selectedSegmentId: snap.selectedSegmentId,
-    selectedZoomFragmentId: snap.selectedZoomFragmentId,
-    selectedPerspectiveFragmentId: snap.selectedPerspectiveFragmentId,
+    zoomFragments: timeline.zoomFragments.map((z) => ({ ...z, fixedRect: z.fixedRect ? { ...z.fixedRect } : undefined })),
+    perspectiveFragments: timeline.perspectiveFragments.map((fragment) => ({ ...fragment })),
+    blurRegions: timeline.blurRegions.map((region) => ({ ...region })),
+    speedRanges: screenshotDuration ? [] : snap.speedRanges.map((range) => ({ ...range })),
+    textClips: timeline.textClips.map((clip) => ({ ...clip })),
+    globalSpeed: screenshotDuration ? DEFAULT_PLAYBACK_SPEED : snap.globalSpeed,
+    selectedSegmentId: screenshotDuration ? null : snap.selectedSegmentId,
+    selectedZoomFragmentId: snap.selectedZoomFragmentId
+      ? (timeline.zoomFragments[0]?.id ?? null)
+      : null,
+    selectedPerspectiveFragmentId: snap.selectedPerspectiveFragmentId
+      ? (timeline.perspectiveFragments[0]?.id ?? null)
+      : null,
     selectedBlurRegionId: snap.selectedBlurRegionId,
-    selectedSpeedRangeId: snap.selectedSpeedRangeId,
+    selectedSpeedRangeId: screenshotDuration ? null : snap.selectedSpeedRangeId,
     selectedTextClipId: snap.selectedTextClipId,
     selectedGapIndex: null,
     currentTime: snap.currentTime,
@@ -1094,13 +1110,28 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const segments = isScreenshot
       ? createFullSegment(duration)
       : parsed?.segments ?? createFullSegment(duration);
-    const zoomFragments = parsed?.zoomFragments ?? [];
-    const perspectiveFragments = parsed?.perspectiveFragments ?? [];
-    const blurRegions = legacyImageState
+    const parsedZoomFragments = parsed?.zoomFragments ?? [];
+    const parsedPerspectiveFragments = parsed?.perspectiveFragments ?? [];
+    const parsedBlurRegions = legacyImageState
       ? legacyImageState.blurRegions.map((region) => ({ ...region, start: 0, end: duration }))
       : parsed?.blurRegions ?? [];
     const speedRanges = isScreenshot ? [] : parsed?.speedRanges ?? [];
-    const textClips = parsed?.textClips ?? [];
+    const parsedTextClips = parsed?.textClips ?? [];
+    const staticTimeline = isScreenshot
+      ? makeScreenshotTimelineStatic(
+          {
+            zoomFragments: parsedZoomFragments,
+            perspectiveFragments: parsedPerspectiveFragments,
+            blurRegions: parsedBlurRegions,
+            textClips: parsedTextClips,
+          },
+          duration,
+        )
+      : null;
+    const zoomFragments = staticTimeline?.zoomFragments ?? parsedZoomFragments;
+    const perspectiveFragments = staticTimeline?.perspectiveFragments ?? parsedPerspectiveFragments;
+    const blurRegions = staticTimeline?.blurRegions ?? parsedBlurRegions;
+    const textClips = staticTimeline?.textClips ?? parsedTextClips;
     const globalSpeed = isScreenshot
       ? DEFAULT_PLAYBACK_SPEED
       : parsed?.globalSpeed ?? DEFAULT_PLAYBACK_SPEED;
@@ -1360,12 +1391,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
   addBlurRegion(kind = "blur") {
-    const { duration, currentTime } = get();
+    const { duration, currentTime, screenshotId } = get();
     if (!(duration > 0)) return;
     const region = createBlurRegion(duration, kind);
     const length = Math.max(REGION_MIN_DURATION, region.end - region.start);
     const start = Math.max(0, Math.min(Math.max(0, duration - length), currentTime - length / 2));
-    const next = clampBlurRegion({ ...region, start, end: start + length }, duration);
+    const next = screenshotId
+      ? { ...region, start: 0, end: duration }
+      : clampBlurRegion({ ...region, start, end: start + length }, duration);
     set((s) => ({
       blurRegions: [...s.blurRegions, next],
       selectedBlurRegionId: next.id,
@@ -1391,14 +1424,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   updateBlurRegion(id, patch) {
     const duration = get().duration;
+    const isScreenshot = get().screenshotId !== null;
     set((s) => ({
       blurRegions: s.blurRegions.map((region) =>
-        region.id === id ? clampBlurRegion({ ...region, ...patch }, duration) : region,
+        region.id === id
+          ? clampBlurRegion({
+              ...region,
+              ...patch,
+              ...(isScreenshot ? { start: 0, end: duration } : {}),
+            }, duration)
+          : region,
       ),
     }));
     schedulePersist(get);
   },
   moveBlurRegion(id, start, end) {
+    if (get().screenshotId) return;
     const duration = get().duration;
     if (!(duration > 0)) return;
     set((s) => ({
@@ -1417,9 +1458,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
   addTextClip() {
-    const { duration, currentTime } = get();
+    const { duration, currentTime, screenshotId } = get();
     if (!(duration > 0)) return;
-    const clip = createTextClip(duration, currentTime);
+    const created = createTextClip(duration, currentTime);
+    const clip = screenshotId ? { ...created, start: 0, end: duration } : created;
     const before = snapshotOf(get());
     set({
       textClips: [...get().textClips, clip],
@@ -1437,14 +1479,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   updateTextClip(id, patch) {
     const duration = get().duration;
+    const isScreenshot = get().screenshotId !== null;
     set((s) => ({
       textClips: s.textClips.map((clip) =>
-        clip.id === id ? clampTextClip({ ...clip, ...patch }, duration) : clip,
+        clip.id === id
+          ? clampTextClip({
+              ...clip,
+              ...patch,
+              ...(isScreenshot ? { start: 0, end: duration } : {}),
+            }, duration)
+          : clip,
       ),
     }));
     schedulePersist(get);
   },
   moveTextClip(id, start, end) {
+    if (get().screenshotId) return;
     const duration = get().duration;
     if (!(duration > 0)) return;
     set((s) => ({
@@ -1710,7 +1760,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   addFragment(mode) {
     if (get().screenshotId && (mode === "speed" || mode === "trim")) return;
-    const { duration, currentTime, segments, recordingMetadata } = get();
+    const { duration, currentTime, segments, recordingMetadata, screenshotId } = get();
     if (duration <= 0) return;
     const before = snapshotOf(get());
 
@@ -1723,10 +1773,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         containing?.end ?? duration,
         MIN_SEGMENT_LENGTH,
       );
-      const fragment = createDefaultZoomFragment(start, end, recordingMetadata);
+      const created = createDefaultZoomFragment(start, end, recordingMetadata);
+      const fragment = screenshotId
+        ? { ...created, start: 0, end: duration, easeIn: 0, easeOut: 0 }
+        : created;
       invalidateZoomKeyframesCache();
       set({
-        zoomFragments: [...get().zoomFragments, fragment],
+        zoomFragments: screenshotId ? [fragment] : [...get().zoomFragments, fragment],
         selectedZoomFragmentId: fragment.id,
         selectedGapIndex: null,
         selectedSegmentId: null,
@@ -1750,9 +1803,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         containing?.end ?? duration,
         MIN_SEGMENT_LENGTH,
       );
-      const fragment = createDefaultPerspectiveTimelineFragment(start, end);
+      const created = createDefaultPerspectiveTimelineFragment(start, end);
+      const fragment = screenshotId
+        ? { ...created, start: 0, end: duration, easeIn: 0, easeOut: 0 }
+        : created;
       set({
-        perspectiveFragments: [...get().perspectiveFragments, fragment],
+        perspectiveFragments: screenshotId
+          ? [fragment]
+          : [...get().perspectiveFragments, fragment],
         selectedPerspectiveFragmentId: fragment.id,
         selectedZoomFragmentId: null,
         selectedGapIndex: null,
@@ -1785,7 +1843,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
 
     if (mode === "text") {
-      const clip = createTextClip(duration, currentTime);
+      const created = createTextClip(duration, currentTime);
+      const clip = screenshotId ? { ...created, start: 0, end: duration } : created;
       set({
         textClips: [...get().textClips, clip],
         selectedTextClipId: clip.id,
@@ -1809,7 +1868,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const region = createBlurRegion(duration, kind);
       const length = Math.max(REGION_MIN_DURATION, region.end - region.start);
       const start = Math.max(0, Math.min(Math.max(0, duration - length), currentTime - length / 2));
-      const next = clampBlurRegion({ ...region, start, end: start + length }, duration);
+      const next = screenshotId
+        ? { ...region, start: 0, end: duration }
+        : clampBlurRegion({ ...region, start, end: start + length }, duration);
       set({
         blurRegions: [...get().blurRegions, next],
         selectedBlurRegionId: next.id,
@@ -1850,6 +1911,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   suggestZoomsFromClicks(opts) {
+    if (get().screenshotId) return "no-slots";
     const force = opts?.force === true;
     const selectPanel = opts?.selectPanel === true;
     const { duration, recordingMetadata, zoomFragments } = get();
@@ -2061,6 +2123,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   moveZoomFragment(id, start, end) {
+    if (get().screenshotId) return;
     const { duration } = get();
     if (duration <= 0) return;
     let nextStart = Math.max(0, Math.min(duration, start));
@@ -2079,9 +2142,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   updateZoomFragment(id, patch) {
+    const { screenshotId, duration } = get();
     invalidateZoomKeyframesCache();
     set({
-      zoomFragments: get().zoomFragments.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+      zoomFragments: get().zoomFragments.map((f) =>
+        f.id === id
+          ? {
+              ...f,
+              ...patch,
+              ...(screenshotId ? { start: 0, end: duration, easeIn: 0, easeOut: 0 } : {}),
+            }
+          : f,
+      ),
     });
     schedulePersist(get);
   },
@@ -2089,14 +2161,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   updateSelectedZoomFragment(updater) {
     const id = get().selectedZoomFragmentId;
     if (!id) return;
+    const { screenshotId, duration } = get();
     invalidateZoomKeyframesCache();
     set({
-      zoomFragments: get().zoomFragments.map((f) => (f.id === id ? updater(f) : f)),
+      zoomFragments: get().zoomFragments.map((f) => {
+        if (f.id !== id) return f;
+        const next = updater(f);
+        return screenshotId
+          ? { ...next, start: 0, end: duration, easeIn: 0, easeOut: 0 }
+          : next;
+      }),
     });
     schedulePersist(get);
   },
 
   movePerspectiveFragment(id, start, end) {
+    if (get().screenshotId) return;
     const { duration } = get();
     if (duration <= 0) return;
     let nextStart = Math.max(0, Math.min(duration, start));
@@ -2114,9 +2194,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   updatePerspectiveFragment(id, patch) {
+    const { screenshotId, duration } = get();
     set({
       perspectiveFragments: get().perspectiveFragments.map((fragment) =>
-        fragment.id === id ? { ...fragment, ...patch } : fragment,
+        fragment.id === id
+          ? {
+              ...fragment,
+              ...patch,
+              ...(screenshotId ? { start: 0, end: duration, easeIn: 0, easeOut: 0 } : {}),
+            }
+          : fragment,
       ),
     });
     schedulePersist(get);
@@ -2125,16 +2212,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   updateSelectedPerspectiveFragment(updater) {
     const id = get().selectedPerspectiveFragmentId;
     if (!id) return;
+    const { screenshotId, duration } = get();
     set({
-      perspectiveFragments: get().perspectiveFragments.map((fragment) =>
-        fragment.id === id ? updater(fragment) : fragment,
-      ),
+      perspectiveFragments: get().perspectiveFragments.map((fragment) => {
+        if (fragment.id !== id) return fragment;
+        const next = updater(fragment);
+        return screenshotId
+          ? { ...next, start: 0, end: duration, easeIn: 0, easeOut: 0 }
+          : next;
+      }),
     });
     schedulePersist(get);
   },
 
   splitAt(args) {
     const kind = get().screenshotId ? "screenshot" : "video";
+    if (kind === "screenshot") return false;
     if (args.kind === "trim" && !supportsEditorFeature(kind, "source-trim")) return false;
     if (args.kind === "speed" && !supportsEditorFeature(kind, "speed")) return false;
     const { duration, segments, zoomFragments, perspectiveFragments } = get();
@@ -2287,7 +2380,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       historyPast: past.slice(0, -1),
       historyFuture: future.length > HISTORY_LIMIT ? future.slice(0, HISTORY_LIMIT) : future,
     });
-    applySnapshot(set, target);
+    applySnapshot(set, target, get().screenshotId ? get().duration : null);
     schedulePersist(get);
   },
 
@@ -2301,7 +2394,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       historyFuture: rest,
       historyPast: past.length > HISTORY_LIMIT ? past.slice(past.length - HISTORY_LIMIT) : past,
     });
-    applySnapshot(set, target!);
+    applySnapshot(set, target!, get().screenshotId ? get().duration : null);
     schedulePersist(get);
   },
 

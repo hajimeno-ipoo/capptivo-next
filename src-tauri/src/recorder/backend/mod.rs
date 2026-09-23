@@ -37,6 +37,8 @@ mod sck_window;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 pub(crate) mod window_prepare;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
+pub(crate) mod window_focus;
+#[cfg(all(target_os = "macos", feature = "scap-capture"))]
 pub(crate) use window_prepare::{prepare_for_capture, prepare_for_screenshot};
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 mod scap_backend;

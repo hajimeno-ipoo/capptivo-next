@@ -1,13 +1,8 @@
-//! Picker thumbnails: one still frame per display/window.
-//!
-//! Primary path is `SCScreenshotManager` — the legacy Quartz screenshot APIs
-//! (`CGDisplayCreateImage` / `CGWindowListCreateImage`) silently return NULL
-//! on macOS 15+, which left the picker with blank numbered tiles. The Quartz
-//! path is kept as the fallback for macOS < 14.4, where the manager class
-//! doesn't exist.
+//! Picker thumbnails use the original Quartz still-image path.
+//! Full-resolution screenshot capture below is a separate operation.
 
 use super::picker_sources::{
-    display_scale_factor, display_for_window_frame, points_to_even_pixels,
+    display_scale_factor, display_for_window_frame,
 };
 use super::preview::{SourcePreview, PREVIEW_MAX_WIDTH};
 use crate::cursor::CaptureRect;
@@ -306,88 +301,11 @@ fn sck_available() -> bool {
 }
 
 pub fn display_thumbnail(display_id: u32) -> Option<SourcePreview> {
-    if !sck_available() {
-        return legacy_display_thumbnail(display_id);
-    }
-    let content = UnsafeSCShareableContent::get().ok()?;
-    let display = content
-        .displays()
-        .into_iter()
-        .find(|d| d.get_display_id() == display_id)?;
-    let frame = display.get_frame();
-    let (w, h) = points_to_even_pixels(
-        frame.size.width,
-        frame.size.height,
-        display_scale_factor(display_id),
-    );
-    let filter = UnsafeContentFilter::init(UnsafeInitParams::Display(display));
-    sck_screenshot(filter, w, h, ScreenshotConfigurationKind::Display)
+    legacy_display_thumbnail(display_id)
 }
 
 pub fn window_thumbnail(window_id: u32) -> Option<SourcePreview> {
-    if !sck_available() {
-        return legacy_window_thumbnail(window_id);
-    }
-    let content = UnsafeSCShareableContent::get().ok()?;
-    let displays = content.displays();
-    let window = content
-        .windows()
-        .into_iter()
-        .find(|w| w.get_window_id() == window_id)?;
-    let frame = window.get_frame();
-    let rect = CaptureRect {
-        x: frame.origin.x,
-        y: frame.origin.y,
-        width: frame.size.width,
-        height: frame.size.height,
-    };
-    let scale = display_for_window_frame(&rect, &displays)
-        .map(display_scale_factor)
-        .unwrap_or(1);
-    let (w, h) = points_to_even_pixels(rect.width, rect.height, scale);
-    let filter =
-        UnsafeContentFilter::init(UnsafeInitParams::DesktopIndependentWindow(window));
-    sck_screenshot(
-        filter,
-        w,
-        h,
-        ScreenshotConfigurationKind::SingleWindow,
-    )
-}
-
-/// One frame through `SCScreenshotManager`. The completion handler lands on an
-/// SCK-internal queue, so blocking on the channel here is safe from any thread.
-fn sck_screenshot(
-    filter: Id<UnsafeContentFilter>,
-    width_px: u32,
-    height_px: u32,
-    kind: ScreenshotConfigurationKind,
-) -> Option<SourcePreview> {
-    let (tx, rx) = mpsc::channel::<Option<SourcePreview>>();
-    unsafe {
-        let config: *mut Object = msg_send![class!(SCStreamConfiguration), new];
-        let _: () = msg_send![config, setWidth: width_px as usize];
-        let _: () = msg_send![config, setHeight: height_px as usize];
-        let _: () = msg_send![config, setShowsCursor: NO as BOOL];
-        configure_single_window_capture(config, kind);
-        let handler = ConcreteBlock::new(move |image: *mut Object, _error: *mut Object| {
-            let preview = if image.is_null() {
-                None
-            } else {
-                encode_preview(CGImageRef::from_ptr(image.cast()))
-            };
-            let _ = tx.send(preview);
-        })
-        .copy();
-        let _: () = msg_send![
-            class!(SCScreenshotManager),
-            captureImageWithFilter: &*filter
-            configuration: config
-            completionHandler: &*handler
-        ];
-        let _: () = msg_send![config, release];
-    }
-    rx.recv_timeout(SCREENSHOT_TIMEOUT).ok().flatten()
+    legacy_window_thumbnail(window_id)
 }
 
 /// Configure Apple's single-window capture behavior when the running macOS

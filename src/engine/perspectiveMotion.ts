@@ -10,6 +10,24 @@ export const PERSPECTIVE_LIMITS = {
 export const PERSPECTIVE_DEFAULT_DURATION = 3;
 export const PERSPECTIVE_DEFAULT_EASE = 0.35;
 
+export const PERSPECTIVE_PIVOT_POINTS = [
+  { id: "topLeft", x: 0, y: 0 },
+  { id: "top", x: 0.5, y: 0 },
+  { id: "topRight", x: 1, y: 0 },
+  { id: "right", x: 1, y: 0.5 },
+  { id: "bottomRight", x: 1, y: 1 },
+  { id: "bottom", x: 0.5, y: 1 },
+  { id: "bottomLeft", x: 0, y: 1 },
+  { id: "left", x: 0, y: 0.5 },
+  { id: "center", x: 0.5, y: 0.5 },
+] as const;
+
+export type PerspectivePivot = (typeof PERSPECTIVE_PIVOT_POINTS)[number]["id"];
+
+export function isPerspectivePivot(value: unknown): value is PerspectivePivot {
+  return PERSPECTIVE_PIVOT_POINTS.some((point) => point.id === value);
+}
+
 export type PerspectiveFragment = {
   id: string;
   start: number;
@@ -17,6 +35,7 @@ export type PerspectiveFragment = {
   tiltX: number;
   tiltY: number;
   tiltZ: number;
+  pivot?: PerspectivePivot;
   perspectiveDistance: number;
   reflectionStrength: number;
   reflectionStyle: ReflectionStyle;
@@ -59,6 +78,7 @@ export function createDefaultPerspectiveFragment(
     tiltX: 12,
     tiltY: -18,
     tiltZ: -4,
+    pivot: "center",
     perspectiveDistance: 1100,
     reflectionStrength: 0,
     reflectionStyle: "soft",
@@ -105,6 +125,7 @@ export function normalizePerspectiveFragments(
             PERSPECTIVE_LIMITS.tiltZ.min,
             PERSPECTIVE_LIMITS.tiltZ.max,
           ),
+          pivot: isPerspectivePivot(d.pivot) ? d.pivot : "center",
           perspectiveDistance: clamp(
             finiteOr(d.perspectiveDistance, 0),
             PERSPECTIVE_LIMITS.perspectiveDistance.min,
@@ -148,9 +169,9 @@ export function computePerspectiveEnvelope(
 export function perspectiveValuesAtTime(
   fragment: PerspectiveFragment | null,
   time: number,
-): { tiltX: number; tiltY: number; tiltZ: number; perspectiveDistance: number; reflectionStrength: number; reflectionStyle: ReflectionStyle } {
+): { tiltX: number; tiltY: number; tiltZ: number; pivot: PerspectivePivot; perspectiveDistance: number; reflectionStrength: number; reflectionStyle: ReflectionStyle } {
   if (!fragment) {
-    return { tiltX: 0, tiltY: 0, tiltZ: 0, perspectiveDistance: 0, reflectionStrength: 0, reflectionStyle: "soft" };
+    return { tiltX: 0, tiltY: 0, tiltZ: 0, pivot: "center", perspectiveDistance: 0, reflectionStrength: 0, reflectionStyle: "soft" };
   }
 
   const amount = computePerspectiveEnvelope(fragment, time);
@@ -158,6 +179,7 @@ export function perspectiveValuesAtTime(
     tiltX: fragment.tiltX * amount,
     tiltY: fragment.tiltY * amount,
     tiltZ: fragment.tiltZ * amount,
+    pivot: fragment.pivot ?? "center",
     perspectiveDistance: fragment.perspectiveDistance * amount,
     reflectionStrength: fragment.reflectionStrength * amount,
     reflectionStyle: fragment.reflectionStyle,

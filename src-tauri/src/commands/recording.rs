@@ -119,6 +119,22 @@ pub fn prepare_window_capture(source_id: String) -> AppResult<()> {
     Ok(())
 }
 
+/// Bring the selected source window forward without beginning a capture.
+#[tauri::command(async)]
+pub fn focus_window_source(source_id: String) -> AppResult<()> {
+    #[cfg(all(target_os = "macos", feature = "scap-capture"))]
+    {
+        let window_id = crate::recorder::backend::picker_sources::parse_window_id(&source_id)
+            .ok_or_else(|| AppError::InvalidSource("Invalid window source".into()))?;
+        return crate::recorder::backend::window_focus::focus(window_id);
+    }
+    #[cfg(not(all(target_os = "macos", feature = "scap-capture")))]
+    {
+        let _ = source_id;
+        Err(AppError::Unsupported)
+    }
+}
+
 #[tauri::command(async)]
 pub fn start_recording(
     app: AppHandle,

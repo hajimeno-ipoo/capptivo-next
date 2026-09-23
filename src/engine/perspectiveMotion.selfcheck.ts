@@ -1,4 +1,5 @@
 import {
+  PERSPECTIVE_PIVOT_POINTS,
   createDefaultPerspectiveFragment,
   findActivePerspectiveFragment,
   normalizePerspectiveFragments,
@@ -14,6 +15,7 @@ assert(
   flat.tiltX === 0 &&
     flat.tiltY === 0 &&
     flat.tiltZ === 0 &&
+    flat.pivot === "center" &&
     flat.perspectiveDistance === 0 &&
     flat.reflectionStrength === 0,
   "no active fragment keeps the recording flat",
@@ -24,6 +26,7 @@ const fragment = {
   tiltX: 20,
   tiltY: -10,
   tiltZ: 5,
+  pivot: "bottomLeft" as const,
   perspectiveDistance: 800,
   reflectionStrength: 60,
   reflectionStyle: "dots" as const,
@@ -43,6 +46,7 @@ assert(
   active.tiltX === 20 &&
     active.tiltY === -10 &&
     active.tiltZ === 5 &&
+    active.pivot === "bottomLeft" &&
     active.perspectiveDistance === 800 &&
     active.reflectionStrength === 60 &&
     active.reflectionStyle === "dots",
@@ -51,6 +55,11 @@ assert(
 
 const [legacy] = normalizePerspectiveFragments([{ id: "old", start: 2, end: 6, tiltX: 8 }], 8);
 assert(legacy.reflectionStrength === 0 && legacy.reflectionStyle === "soft", "old blocks default to no reflection");
+assert(legacy.pivot === "center", "old blocks retain the center pivot");
+for (const point of PERSPECTIVE_PIVOT_POINTS) {
+  const [saved] = normalizePerspectiveFragments([{ ...fragment, pivot: point.id }], 8);
+  assert(saved.pivot === point.id, `${point.id} pivot survives project loading`);
+}
 const [clamped] = normalizePerspectiveFragments([{ ...fragment, reflectionStrength: 150, reflectionStyle: "unknown" }], 8);
 assert(clamped.reflectionStrength === 100 && clamped.reflectionStyle === "soft", "invalid reflection settings normalize");
 

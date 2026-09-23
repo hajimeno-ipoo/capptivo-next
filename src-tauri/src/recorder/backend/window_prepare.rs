@@ -66,7 +66,7 @@ pub fn prepare_for_screenshot(window_id: u32) -> AppResult<()> {
     ))
 }
 
-fn selected_window_is_front(window_id: u32, pid: i32) -> AppResult<bool> {
+pub(super) fn selected_window_is_front(window_id: u32, pid: i32) -> AppResult<bool> {
     if pid <= 0 { return Ok(false); }
     let front_pid = unsafe {
         use objc::{class, msg_send, sel, sel_impl};
@@ -99,7 +99,7 @@ fn is_capture_ready(window_id: u32) -> AppResult<bool> {
         .any(|w| w.get_window_id() == window_id))
 }
 
-fn window_meta(window_id: u32) -> AppResult<(i32, String, String, Option<String>)> {
+pub(super) fn window_meta(window_id: u32) -> AppResult<(i32, String, String, Option<String>)> {
     let content = shareable_content_all()?;
     let window = content
         .windows()
@@ -154,7 +154,7 @@ fn activate_window(pid: i32, app_name: &str, bundle_id: Option<&str>, title: &st
     }
 }
 
-fn activate_app(pid: i32) {
+pub(super) fn activate_app(pid: i32) {
     use objc::{class, msg_send, sel, sel_impl};
     use objc::runtime::{BOOL, Object};
 

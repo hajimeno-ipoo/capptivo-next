@@ -17,6 +17,7 @@
     "allow-relaunch",
     "allow-recorder-state",
     "allow-prepare-window-capture",
+    "allow-focus-window-source",
     "allow-start-recording",
     "allow-pause-recording",
     "allow-resume-recording",

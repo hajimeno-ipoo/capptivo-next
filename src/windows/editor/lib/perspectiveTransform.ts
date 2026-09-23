@@ -1,5 +1,5 @@
 /** 3D-look values are authored in degrees and composition pixels. */
-import type { ReflectionStyle } from "../../../engine/perspectiveMotion.ts";
+import { PERSPECTIVE_PIVOT_POINTS, type PerspectivePivot, type ReflectionStyle } from "../../../engine/perspectiveMotion.ts";
 
 export interface PerspectiveLook {
   /** Rotation around the horizontal axis, in degrees. */
@@ -8,6 +8,8 @@ export interface PerspectiveLook {
   tiltY: number;
   /** Roll around the viewing axis, in degrees. */
   tiltZ: number;
+  /** Point of the recording plane that remains fixed during rotation. */
+  pivot?: PerspectivePivot;
   /** Perspective focal distance in composition pixels; 0 uses a gentle default. */
   perspectiveDistance: number;
   reflectionStrength: number;
@@ -69,8 +71,10 @@ function projectPoint(
     ),
   );
 
-  const cx = width / 2;
-  const cy = height / 2;
+  const pivot = PERSPECTIVE_PIVOT_POINTS.find((point) => point.id === params.pivot)
+    ?? PERSPECTIVE_PIVOT_POINTS[8];
+  const cx = width * pivot.x;
+  const cy = height * pivot.y;
   const localX = x - cx;
   const localY = y - cy;
 

@@ -7,6 +7,7 @@ import { TimelineResizePill, type TimelineResizeEdge } from "./TimelineResizePil
 type Props = {
   fragment: PerspectiveFragment;
   selected: boolean;
+  resizable?: boolean;
   onResizePointerDown: (edge: TimelineResizeEdge, e: React.PointerEvent) => void;
 };
 
@@ -14,6 +15,7 @@ type Props = {
 export function PerspectiveTimelineBlock({
   fragment,
   selected,
+  resizable = true,
   onResizePointerDown,
 }: Props) {
   return (
@@ -26,18 +28,22 @@ export function PerspectiveTimelineBlock({
       )}
       title={`${formatTimelineTime(fragment.start)} – ${formatTimelineTime(fragment.end)}`}
     >
-      <TimelineResizePill
-        edge="start"
-        hoverGroup="perspective"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("start", e)}
-      />
-      <TimelineResizePill
-        edge="end"
-        hoverGroup="perspective"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("end", e)}
-      />
+      {resizable && (
+        <>
+          <TimelineResizePill
+            edge="start"
+            hoverGroup="perspective"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("start", e)}
+          />
+          <TimelineResizePill
+            edge="end"
+            hoverGroup="perspective"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("end", e)}
+          />
+        </>
+      )}
       <div className="pointer-events-none relative z-10 flex items-center gap-1 px-3 py-0.5 text-white select-none">
         <Box className="size-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
         <span className="text-[11px] font-semibold tracking-tight">3D</span>

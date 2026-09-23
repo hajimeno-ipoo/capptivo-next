@@ -77,6 +77,7 @@ export function ZoomPanel({
     screenPreviewUrl(s.proxyUrl, s.screenUrl),
   );
   const cameraUrl = useEditorStore((s) => s.cameraUrl);
+  const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
   const look = useEditorStore((s) => s.look);
   const selectedBackground = useEditorStore((s) => s.selectedBackground);
   const backgroundType = useEditorStore((s) => s.backgroundType);
@@ -638,7 +639,7 @@ export function ZoomPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {!isScreenshot && <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <FieldLabelWithHint htmlFor="zoom-ease-in" hint={t("zoom.easeIn.hint")}>
                 {t("zoom.easeIn")}
@@ -688,7 +689,7 @@ export function ZoomPanel({
                 </div>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
       )}
     </div>

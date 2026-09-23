@@ -8,11 +8,12 @@ import { TimelineResizePill, type TimelineResizeEdge } from "./TimelineResizePil
 type Props = {
   fragment: ZoomFragment;
   selected: boolean;
+  resizable?: boolean;
   onResizePointerDown: (edge: TimelineResizeEdge, e: React.PointerEvent) => void;
 };
 
 /** Purple zoom segment on the timeline (scale + follow mode). */
-export function ZoomTimelineBlock({ fragment, selected, onResizePointerDown }: Props) {
+export function ZoomTimelineBlock({ fragment, selected, resizable = true, onResizePointerDown }: Props) {
   const { t } = useI18n();
   const isAuto = fragment.mode === "follow-cursor";
   const modeLabel = isAuto ? t("timeline.zoomAuto") : t("timeline.zoomManual");
@@ -26,18 +27,22 @@ export function ZoomTimelineBlock({ fragment, selected, onResizePointerDown }: P
           : "border border-transparent bg-gradient-to-r from-[#4a2a69] via-[#553075] to-[#643690] hover:from-[#593180] hover:via-[#643690] hover:to-[#733da7]",
       )}
     >
-      <TimelineResizePill
-        edge="start"
-        hoverGroup="zoom"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("start", e)}
-      />
-      <TimelineResizePill
-        edge="end"
-        hoverGroup="zoom"
-        show={selected}
-        onPointerDown={(e) => onResizePointerDown("end", e)}
-      />
+      {resizable && (
+        <>
+          <TimelineResizePill
+            edge="start"
+            hoverGroup="zoom"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("start", e)}
+          />
+          <TimelineResizePill
+            edge="end"
+            hoverGroup="zoom"
+            show={selected}
+            onPointerDown={(e) => onResizePointerDown("end", e)}
+          />
+        </>
+      )}
 
       <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-white select-none">
         <div className="flex items-center gap-1">
