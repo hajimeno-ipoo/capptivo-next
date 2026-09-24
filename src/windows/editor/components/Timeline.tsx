@@ -65,13 +65,6 @@ const LANE_H = 44;
 const BLOCK_INSET = 4;
 const BLOCK_H = LANE_H - BLOCK_INSET * 2;
 const CLIP_TOP = RULER_H;
-const ZOOM_TOP = RULER_H + LANE_H;
-const PERSPECTIVE_TOP = RULER_H + LANE_H * 2;
-const MASK_TOP = RULER_H + LANE_H * 3;
-const HIGHLIGHT_TOP = RULER_H + LANE_H * 4;
-const SPEED_TOP = RULER_H + LANE_H * 5;
-const TEXT_TOP = RULER_H + LANE_H * 6;
-const TRACK_H = RULER_H + LANE_H * 7;
 const CLICK_DRAG_PX = 3;
 
 /**
@@ -226,6 +219,31 @@ export function Timeline({
   const safeDuration = duration > 0 ? duration : 1;
   const ready = duration > 0;
   const trackWidth = Math.max(1, Math.round(containerWidth * uiZoom));
+  const hasZoom = zoomFragments.length > 0;
+  const hasPerspective = perspectiveFragments.length > 0;
+  const hasMask = blurRegions.some((region) => region.kind === "blur");
+  const hasHighlight = blurRegions.some((region) => region.kind === "highlight");
+  const hasSpeed = speedEnabled && speedRanges.length > 0;
+  const hasText = textClips.length > 0;
+
+  // The main clip is always the first lane. Optional lanes occupy space only
+  // while they contain an editable item, including after undo or loading a project.
+  const zoomTop = CLIP_TOP + LANE_H;
+  const perspectiveTop = zoomTop + (hasZoom ? LANE_H : 0);
+  const maskTop = perspectiveTop + (hasPerspective ? LANE_H : 0);
+  const highlightTop = maskTop + (hasMask ? LANE_H : 0);
+  const speedTop = highlightTop + (hasHighlight ? LANE_H : 0);
+  const textTop = speedTop + (hasSpeed ? LANE_H : 0);
+  const trackHeight = textTop + (hasText ? LANE_H : 0);
+  const visibleLaneTops = [
+    CLIP_TOP,
+    ...(hasZoom ? [zoomTop] : []),
+    ...(hasPerspective ? [perspectiveTop] : []),
+    ...(hasMask ? [maskTop] : []),
+    ...(hasHighlight ? [highlightTop] : []),
+    ...(hasSpeed ? [speedTop] : []),
+    ...(hasText ? [textTop] : []),
+  ];
 
   /** Set an absolute zoom, keeping the time under `anchorClientX` (or the
    *  viewport centre) pinned. Anchor math uses the committed layout, so it stays
@@ -613,12 +631,12 @@ export function Timeline({
       const laneY = rect ? e.clientY - rect.top : CLIP_TOP;
       if (laneY < CLIP_TOP) return;
 
-      if (laneY >= CLIP_TOP && laneY < ZOOM_TOP) {
+      if (laneY >= CLIP_TOP && laneY < zoomTop) {
         if (splitAt({ kind: "trim", time: t })) setSplitTool(false);
         return;
       }
 
-      if (laneY >= ZOOM_TOP && laneY < PERSPECTIVE_TOP) {
+      if (laneY >= zoomTop && laneY < perspectiveTop) {
         const zoomHit = zoomFragments.find((f) => t >= f.start && t <= f.end);
         if (zoomHit && splitAt({ kind: "zoom", fragmentId: zoomHit.id, time: t })) {
           setSplitTool(false);
@@ -626,7 +644,7 @@ export function Timeline({
         return;
       }
 
-      if (laneY >= PERSPECTIVE_TOP && laneY < MASK_TOP) {
+      if (laneY >= perspectiveTop && laneY < maskTop) {
         const perspectiveHit = perspectiveFragments.find(
           (fragment) => t >= fragment.start && t <= fragment.end,
         );
@@ -639,7 +657,7 @@ export function Timeline({
         return;
       }
 
-      if (laneY >= MASK_TOP && laneY < HIGHLIGHT_TOP) {
+      if (laneY >= maskTop && laneY < highlightTop) {
         const maskHit = blurRegions.find(
           (region) => region.kind === "blur" && t >= region.start && t <= region.end,
         );
@@ -649,7 +667,7 @@ export function Timeline({
         return;
       }
 
-      if (laneY >= HIGHLIGHT_TOP && laneY < SPEED_TOP) {
+      if (laneY >= highlightTop && laneY < speedTop) {
         const highlightHit = blurRegions.find(
           (region) => region.kind === "highlight" && t >= region.start && t <= region.end,
         );
@@ -661,14 +679,14 @@ export function Timeline({
         }
         return;
       }
-      if (laneY >= SPEED_TOP && laneY < TEXT_TOP) {
+      if (laneY >= speedTop && laneY < textTop) {
         const speedHit = speedRanges.find((range) => t >= range.start && t <= range.end);
         if (speedHit && splitAt({ kind: "speed", fragmentId: speedHit.id, time: t })) {
           setSplitTool(false);
         }
         return;
       }
-      if (laneY >= TEXT_TOP && laneY < TRACK_H) {
+      if (laneY >= textTop && laneY < trackHeight) {
         const textHit = textClips.find((clip) => t >= clip.start && t <= clip.end);
         if (textHit && splitAt({ kind: "text", fragmentId: textHit.id, time: t })) {
           setSplitTool(false);
@@ -958,7 +976,7 @@ export function Timeline({
                 "relative overflow-hidden bg-muted",
                 splitTool ? "cursor-crosshair" : "cursor-default",
               )}
-              style={{ width: trackWidth, minWidth: "100%", height: TRACK_H }}
+              style={{ width: trackWidth, minWidth: "100%", height: trackHeight }}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerDown={(e) => {
@@ -1005,89 +1023,23 @@ export function Timeline({
             })}
           </div>
 
-          {/* Lane backgrounds + empty hints */}
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/4"
-            style={{ top: CLIP_TOP, height: LANE_H }}
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/2"
-            style={{ top: ZOOM_TOP, height: LANE_H }}
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/4"
-            style={{ top: PERSPECTIVE_TOP, height: LANE_H }}
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/2"
-            style={{ top: MASK_TOP, height: LANE_H }}
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/4"
-            style={{ top: HIGHLIGHT_TOP, height: LANE_H }}
-          />
-          <div
-            className={cn("pointer-events-none absolute inset-x-0 bg-foreground/2", isScreenshot && "opacity-30")}
-            style={{ top: SPEED_TOP, height: LANE_H }}
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bg-foreground/4"
-            style={{ top: TEXT_TOP, height: LANE_H }}
-          />
+          {/* Draw only occupied lanes, alternating their backgrounds. */}
+          {visibleLaneTops.map((top, index) => (
+            <div
+              key={top}
+              className={cn(
+                "pointer-events-none absolute inset-x-0",
+                index % 2 === 0 ? "bg-foreground/4" : "bg-foreground/2",
+              )}
+              style={{ top, height: LANE_H }}
+            />
+          ))}
           {segments.length === 0 && (
             <div
               className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
               style={{ top: CLIP_TOP, height: LANE_H }}
             >
               {t("timeline.pressC")}
-            </div>
-          )}
-          {zoomFragments.length === 0 && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
-              style={{ top: ZOOM_TOP, height: LANE_H }}
-            >
-              {t("timeline.pressZ")}
-            </div>
-          )}
-          {perspectiveFragments.length === 0 && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
-              style={{ top: PERSPECTIVE_TOP, height: LANE_H }}
-            >
-              {t("look.threeD")}
-            </div>
-          )}
-          {!blurRegions.some((region) => region.kind === "blur") && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
-              style={{ top: MASK_TOP, height: LANE_H }}
-            >
-              {t("blur.mask")}
-            </div>
-          )}
-          {!blurRegions.some((region) => region.kind === "highlight") && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
-              style={{ top: HIGHLIGHT_TOP, height: LANE_H }}
-            >
-              {t("blur.highlight")}
-            </div>
-          )}
-          {(isScreenshot || speedRanges.length === 0) && (
-            <div
-              className={cn("pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground", isScreenshot && "opacity-40")}
-              style={{ top: SPEED_TOP, height: LANE_H }}
-            >
-              {t("export.gifSpeed")}
-            </div>
-          )}
-          {textClips.length === 0 && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
-              style={{ top: TEXT_TOP, height: LANE_H }}
-            >
-              {t("text.add")}
             </div>
           )}
 
@@ -1154,7 +1106,7 @@ export function Timeline({
                 data-block
                 className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
-                  top: ZOOM_TOP + BLOCK_INSET,
+                  top: zoomTop + BLOCK_INSET,
                   height: BLOCK_H,
                   left: `${(frag.start / safeDuration) * 100}%`,
                   width: `${((frag.end - frag.start) / safeDuration) * 100}%`,
@@ -1209,7 +1161,7 @@ export function Timeline({
                 data-block
                 className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
-                  top: PERSPECTIVE_TOP + BLOCK_INSET,
+                  top: perspectiveTop + BLOCK_INSET,
                   height: BLOCK_H,
                   left: `${(fragment.start / safeDuration) * 100}%`,
                   width: `${((fragment.end - fragment.start) / safeDuration) * 100}%`,
@@ -1264,7 +1216,7 @@ export function Timeline({
           {/* Time-bounded masks and highlights, each in its own lane */}
           {blurRegions.map((region) => {
             const selected = region.id === selectedBlurRegionId;
-            const laneTop = region.kind === "highlight" ? HIGHLIGHT_TOP : MASK_TOP;
+            const laneTop = region.kind === "highlight" ? highlightTop : maskTop;
             return (
               <div
                 key={region.id}
@@ -1326,7 +1278,7 @@ export function Timeline({
                 data-block
                 className="absolute z-10 cursor-pointer"
                 style={{
-                  top: SPEED_TOP + BLOCK_INSET,
+                  top: speedTop + BLOCK_INSET,
                   height: BLOCK_H,
                   left: `${(range.start / safeDuration) * 100}%`,
                   width: `${((range.end - range.start) / safeDuration) * 100}%`,
@@ -1375,7 +1327,7 @@ export function Timeline({
                 data-block
                 className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
-                  top: TEXT_TOP + BLOCK_INSET,
+                  top: textTop + BLOCK_INSET,
                   height: BLOCK_H,
                   left: `${(clip.start / safeDuration) * 100}%`,
                   width: `${((clip.end - clip.start) / safeDuration) * 100}%`,
@@ -1424,7 +1376,7 @@ export function Timeline({
           {/* Playhead — full-width transform layer so % is of the track. */}
           <div
             className="pointer-events-none absolute inset-x-0 top-0 z-20"
-            style={{ height: TRACK_H }}
+            style={{ height: trackHeight }}
           >
             <div
               ref={playheadRef}
