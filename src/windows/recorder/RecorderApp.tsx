@@ -110,6 +110,8 @@ export function RecorderApp() {
     if (captureMode !== "area" || !areaSelection || counting || showHud) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // An open setup panel (or one of its popovers) owns Escape first.
+      if (document.querySelector('[data-recorder-expanded="true"]')) return;
       e.preventDefault();
       useRecorderStore.getState().clearAreaSelection();
     };
@@ -382,13 +384,13 @@ function RecordingHud({ starting }: { starting: boolean }) {
           <span
             className={cn(
               "size-2 shrink-0 rounded-full",
-              paused ? "bg-muted-foreground" : "animate-pulse bg-primary",
+              paused ? "bg-muted-foreground" : "animate-pulse bg-red-600",
             )}
           />
           <span
             className={cn(
               "text-[11px] font-semibold tracking-wider",
-              paused ? "text-muted-foreground" : "text-primary",
+              paused ? "text-muted-foreground" : "text-red-600",
             )}
           >
             {paused ? t("recorder.hud.paused") : "REC"}
@@ -422,13 +424,13 @@ function RecordingHud({ starting }: { starting: boolean }) {
         <span
           className={cn(
             "size-2 shrink-0 rounded-full",
-            paused ? "bg-muted-foreground" : "animate-pulse bg-primary",
+            paused ? "bg-muted-foreground" : "animate-pulse bg-red-600",
           )}
         />
         <span
           className={cn(
             "text-[11px] font-semibold tracking-wider",
-            paused ? "text-muted-foreground" : "text-primary",
+            paused ? "text-muted-foreground" : "text-red-600",
           )}
         >
           {finalizing
@@ -489,7 +491,7 @@ function RecordingHud({ starting }: { starting: boolean }) {
         title={t("recorder.hud.stop")}
         aria-label={t("recorder.hud.stop")}
         onClick={() => void stop()}
-        className="text-primary hover:bg-primary/15 hover:text-primary"
+        className="text-red-600 hover:bg-red-500/15 hover:text-red-600"
       >
         <Square className="size-3.5 fill-current" />
       </HudIconBtn>

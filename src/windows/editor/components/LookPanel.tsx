@@ -6,13 +6,22 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Plus } from "lucide-react";
-import { getCompositionLayout, PERSPECTIVE_PIVOT_POINTS, type PerspectiveFragment, type PerspectivePivot } from "@/engine";
+import { getCompositionLayout, PERSPECTIVE_PIVOT_POINTS, perspectiveEditPreviewTime, type PerspectiveFragment, type PerspectivePivot } from "@/engine";
 
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useI18n } from "@/lib/settings";
 import type { TranslationKey } from "@/lib/i18n";
+import { customBackgroundUrl } from "@/lib/platform";
+import { commands } from "@/ipc/bindings";
 
 import { useEditorStore } from "../store";
 import { cn } from "../lib/cn";
@@ -32,9 +41,11 @@ import {
   resolveRecordingLayoutParams,
 } from "../lib/composition";
 import { useStageDimensions } from "../lib/useStageDimensions";
+import { formatTimelineTime } from "../lib/timelineMath";
 import { FieldLabel, SectionLabel } from "./ui";
 import { ScreenContentCropPanel } from "./ScreenContentCropPanel";
 import { BlurRegionsPanel } from "./BlurRegionsPanel";
+import { ClipTimingDisplay } from "./ClipTimingDisplay";
 import { TextClipsPanel } from "./TextClipsPanel";
 import type { InspectorCompositionLayout } from "./InspectorCompositionFrame";
 
@@ -46,8 +57,16 @@ const BG_TAB_LABEL_KEY: Record<BackgroundType, TranslationKey> = {
   gradient: "bg.gradient",
   color: "bg.color",
 };
+type BackgroundPanelTab = BackgroundType | "mac-wallpaper";
 
-export function LookPanel({ visible = true }: { visible?: boolean }) {
+export type LookSection = "background" | "crop" | "mask" | "text" | "speed" | "perspective";
+
+export function LookPanel({ visible = true, section = "background", canvasHost, onSeek }: {
+  visible?: boolean;
+  section?: LookSection;
+  canvasHost?: HTMLDivElement | null;
+  onSeek: (time: number) => void;
+}) {
   const { t } = useI18n();
   const blurRegions = useEditorStore((s) => s.blurRegions);
   const addBlurRegion = useEditorStore((s) => s.addBlurRegion);
@@ -57,6 +76,12 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
   const selectedBlurRegionId = useEditorStore((s) => s.selectedBlurRegionId);
   const duration = useEditorStore((s) => s.duration);
   const backgroundType = useEditorStore((s) => s.backgroundType);
+  const [backgroundTab, setBackgroundTab] = useState<BackgroundPanelTab>(backgroundType);
+  useEffect(() => {
+    setBackgroundTab((current) =>
+      backgroundType === "image" && current === "mac-wallpaper" ? current : backgroundType,
+    );
+  }, [backgroundType]); // Mac wallpapers use the image renderer, but keep their own visible tab.
   const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
   const setBackgroundType = useEditorStore((s) => s.setBackgroundType);
   const selectedBackground = useEditorStore((s) => s.selectedBackground);
@@ -78,6 +103,8 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
   const selectedPerspectiveFragment = useEditorStore((s) =>
     s.perspectiveFragments.find((fragment) => fragment.id === s.selectedPerspectiveFragmentId) ?? null,
   );
+  const perspectiveFragments = useEditorStore((s) => s.perspectiveFragments);
+  const selectPerspectiveFragment = useEditorStore((s) => s.selectPerspectiveFragment);
   const updateSelectedPerspectiveFragment = useEditorStore(
     (s) => s.updateSelectedPerspectiveFragment,
   );
@@ -103,36 +130,51 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
     background: selectedBackground,
     cornerRadius: look.cornerRadius,
   };
+  const sortedPerspectiveFragments = [...perspectiveFragments].sort(
+    (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
+  );
+  const selectPerspectiveAndSeek = (id: string) => {
+    const fragment = perspectiveFragments.find((candidate) => candidate.id === id);
+    if (!fragment) return;
+    const { isPlaying, setPlaying } = useEditorStore.getState();
+    if (isPlaying) setPlaying(false);
+    selectPerspectiveFragment(id);
+    onSeek(perspectiveEditPreviewTime(fragment));
+  };
 
   return (
     <div className={cn("flex flex-col gap-7", !visible && "hidden")}>
-      <div className="space-y-2">
+      {section === "background" && <div className="space-y-2">
         <SectionLabel>{t("look.background")}</SectionLabel>
 
-        <div className="inline-flex items-center rounded-xl bg-muted p-1">
-          {BACKGROUND_TYPE_TABS.map((tab) => (
+        <div className="grid w-full grid-cols-4 items-center rounded-xl bg-muted p-1">
+          {[...BACKGROUND_TYPE_TABS, { id: "mac-wallpaper" as const }].map((tab) => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setBackgroundType(tab.id)}
+              onClick={() => {
+                setBackgroundTab(tab.id);
+                setBackgroundType(tab.id === "mac-wallpaper" ? "image" : tab.id);
+              }}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                backgroundType === tab.id
+                "rounded-lg px-1.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
+                backgroundTab === tab.id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t(BG_TAB_LABEL_KEY[tab.id])}
+              {t(tab.id === "mac-wallpaper" ? "bg.macWallpaper" : BG_TAB_LABEL_KEY[tab.id])}
             </button>
           ))}
         </div>
 
-        {backgroundType === "image" && <ImageGrid />}
-        {backgroundType === "gradient" && <GradientGrid />}
-        {backgroundType === "color" && <ColorGrid />}
-      </div>
+        {backgroundTab === "image" && <ImageGrid />}
+        {backgroundTab === "mac-wallpaper" && <MacWallpaperGrid />}
+        {backgroundTab === "gradient" && <GradientGrid />}
+        {backgroundTab === "color" && <ColorGrid />}
+      </div>}
 
-      {previewUrl && (selectedBackground || isScreenshot) && (
+      {section === "crop" && previewUrl && (selectedBackground || isScreenshot) && (
         <ScreenContentCropPanel
           key="screen-content-crop"
           videoUrl={previewUrl}
@@ -141,44 +183,73 @@ export function LookPanel({ visible = true }: { visible?: boolean }) {
           value={screenContentCrop}
           onChange={setScreenContentCrop}
           seekTo={cropPreviewTime}
+          canvasHost={canvasHost}
         />
       )}
 
-      {previewUrl && (
+      {section === "mask" && previewUrl && (
         <BlurRegionsPanel
           key="blur-regions"
-          videoUrl={previewUrl}
           fileAspect={sourceAspect}
           duration={duration}
           regions={blurRegions}
           selectedId={selectedBlurRegionId}
           onSelect={selectBlurRegion}
+          onSeek={onSeek}
           onAdd={addBlurRegion}
           onChange={updateBlurRegion}
           onRemove={removeBlurRegion}
           seekTo={cropPreviewTime}
           composition={composition}
           sourceVideoSize={sourceVideoSize}
+          canvasHost={canvasHost}
         />
       )}
 
-      <SpeedControls />
-      <TextClipsPanel composition={composition} />
+      {section === "speed" && <SpeedControls onSeek={onSeek} />}
+      {section === "text" && <TextClipsPanel composition={composition} canvasHost={canvasHost} onSeek={onSeek} />}
 
-      {selectedBackground && <LookSliders />}
-      {selectedPerspectiveFragment && (
+      {section === "background" && selectedBackground && <LookSliders />}
+      {section === "perspective" && sortedPerspectiveFragments.length > 0 && (
+        <div className="space-y-2">
+          <FieldLabel htmlFor="inspector-perspective-fragment">{`${t("look.threeD")} · ${t("clip.fragment.label")}`}</FieldLabel>
+          <Select
+            value={selectedPerspectiveFragment?.id}
+            onValueChange={selectPerspectiveAndSeek}
+          >
+            <SelectTrigger id="inspector-perspective-fragment" className="h-9 w-full">
+              <SelectValue placeholder={t("clip.fragment.placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedPerspectiveFragments.map((fragment, index) => (
+                <SelectItem key={fragment.id} value={fragment.id}
+                  onPointerUp={() => { if (selectedPerspectiveFragment?.id === fragment.id) selectPerspectiveAndSeek(fragment.id); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" && selectedPerspectiveFragment?.id === fragment.id) selectPerspectiveAndSeek(fragment.id); }}>
+                  {`${index + 1}. ${formatTimelineTime(fragment.start)} – ${formatTimelineTime(fragment.end)} · ${t("look.threeD")}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {section === "perspective" && !selectedPerspectiveFragment && (
+        <Button type="button" variant="secondary" size="sm" onClick={() => useEditorStore.getState().addFragment("perspective")}>
+          {t("timeline.addFragment")} · {t("look.threeD")}
+        </Button>
+      )}
+      {section === "perspective" && selectedPerspectiveFragment && (
         <ThreeDPerspective
           fragment={selectedPerspectiveFragment}
           updateFragment={updateSelectedPerspectiveFragment}
           stageWidth={stageDimensions.width}
         />
       )}
-      {selectedBackground && <BackgroundEffects />}
+      {section === "background" && selectedBackground && <BackgroundEffects />}
     </div>
   );
 }
 
-function SpeedControls() {
+function SpeedControls({ onSeek }: { onSeek: (time: number) => void }) {
   const { t } = useI18n();
   const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
   const speedEnabled = supportsEditorFeature(isScreenshot ? "screenshot" : "video", "speed");
@@ -186,10 +257,22 @@ function SpeedControls() {
   const ranges = useEditorStore((s) => s.speedRanges);
   const selectedId = useEditorStore((s) => s.selectedSpeedRangeId);
   const selected = ranges.find((range) => range.id === selectedId) ?? null;
+  const selectSpeedRange = useEditorStore((s) => s.selectSpeedRange);
   const setGlobalSpeed = useEditorStore((s) => s.setGlobalSpeed);
   const addSpeedRange = useEditorStore((s) => s.addSpeedRange);
   const updateSpeedRange = useEditorStore((s) => s.updateSpeedRange);
   const autoSpeedTyping = useEditorStore((s) => s.autoSpeedTyping);
+  const sortedRanges = [...ranges].sort(
+    (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
+  );
+  const selectRangeAndSeek = (id: string) => {
+    const range = ranges.find((candidate) => candidate.id === id);
+    if (!range) return;
+    const { isPlaying, setPlaying } = useEditorStore.getState();
+    if (isPlaying) setPlaying(false);
+    selectSpeedRange(id);
+    onSeek(range.start);
+  };
 
   return (
     <section className={cn("space-y-3", !speedEnabled && "opacity-40")} aria-disabled={!speedEnabled}>
@@ -216,12 +299,30 @@ function SpeedControls() {
           {t("speed.autoTyping")}
         </Button>
       </div>
+      {sortedRanges.length > 0 && (
+        <div className="space-y-2">
+          <FieldLabel htmlFor="inspector-speed-range">{`${t("speed.selectedRange")} · ${t("clip.fragment.label")}`}</FieldLabel>
+          <Select value={selected?.id} onValueChange={selectRangeAndSeek} disabled={!speedEnabled}>
+            <SelectTrigger id="inspector-speed-range" className="h-9 w-full">
+              <SelectValue placeholder={t("clip.fragment.placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedRanges.map((range, index) => (
+                <SelectItem key={range.id} value={range.id}
+                  onPointerUp={() => { if (selected?.id === range.id) selectRangeAndSeek(range.id); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" && selected?.id === range.id) selectRangeAndSeek(range.id); }}>
+                  {`${index + 1}. ${formatTimelineTime(range.start)} – ${formatTimelineTime(range.end)}`}
+                  {` · ${t(range.autoTyping ? "speed.typing" : "speed.selectedRange")} ${range.rate.toFixed(2)}×`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {selected ? (
         <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-2">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t(selected.autoTyping ? "speed.typing" : "speed.selectedRange")}</span>
-            <span className="tabular-nums">{selected.start.toFixed(2)}s – {selected.end.toFixed(2)}s</span>
-          </div>
+          <div className="text-xs text-muted-foreground">{t(selected.autoTyping ? "speed.typing" : "speed.selectedRange")}</div>
+          <ClipTimingDisplay start={selected.start} end={selected.end} />
           <Slider
             min={0.25}
             disabled={!speedEnabled}
@@ -300,7 +401,7 @@ function ImageGrid() {
   return (
     <div className="grid grid-cols-6 gap-1.5">
       {presets.map((p) => swatch(p, false))}
-      {customs.map((p) => swatch(p, true))}
+      {customs.filter((p) => !p.isMacWallpaper).map((p) => swatch(p, true))}
 
       <label
         title={t("look.uploadImage")}
@@ -349,6 +450,75 @@ function ImageGrid() {
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function MacWallpaperGrid() {
+  const { t } = useI18n();
+  const selected = useEditorStore((s) => s.selectedBackground);
+  const importWallpaper = useEditorStore((s) => s.importMacWallpaper);
+  const [wallpapers, setWallpapers] = useState<Awaited<ReturnType<typeof commands.listMacWallpapers>>>([]);
+  const [loading, setLoading] = useState(true);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void commands.listMacWallpapers()
+      .then((items) => {
+        if (active) setWallpapers(items);
+      })
+      .catch(() => {
+        if (active) setError(t("bg.macWallpaper.loadFailed"));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [t]);
+
+  if (loading) return <p className="text-xs text-muted-foreground">{t("app.loading")}</p>;
+  if (error && wallpapers.length === 0) return <p role="alert" className="text-xs text-destructive">{error}</p>;
+  if (wallpapers.length === 0) return <p className="text-xs text-muted-foreground">{t("bg.macWallpaper.empty")}</p>;
+
+  return (
+    <div className="space-y-2">
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+      <div className="grid grid-cols-6 gap-1.5">
+        {wallpapers.map((wallpaper) => {
+          const isSelected = selected === customBackgroundUrl(`${wallpaper.id}.jpg`);
+          return (
+            <button
+              key={wallpaper.id}
+              type="button"
+              title={wallpaper.name}
+              aria-label={wallpaper.name}
+              aria-pressed={isSelected}
+              disabled={importingId !== null}
+              onClick={() => {
+                setError(null);
+                setImportingId(wallpaper.id);
+                void importWallpaper(wallpaper.id)
+                  .catch(() => setError(t("bg.macWallpaper.importFailed")))
+                  .finally(() => setImportingId(null));
+              }}
+              className={cn(
+                "relative aspect-4/3 w-full overflow-hidden rounded-lg border transition-colors disabled:opacity-60",
+                isSelected ? selectedRing : idleRing,
+              )}
+            >
+              {wallpaper.thumbnailDataUrl ? (
+                <img src={wallpaper.thumbnailDataUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center bg-muted px-1 text-center text-[10px] text-muted-foreground">
+                  {wallpaper.name}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -822,6 +992,8 @@ function ThreeDPerspective({
           {t("look.threeD.hint")}
         </p>
       </div>
+
+      <ClipTimingDisplay start={fragment.start} end={fragment.end} />
 
       <div className="grid grid-cols-6 gap-1.5">
         {PERSPECTIVE_PRESETS.map((preset) => (

@@ -22,6 +22,7 @@ export function InspectorVideoPreview({
   onAspect?: (aspect: number) => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const isImage = /\.(png|jpe?g|webp)(?:[?#]|$)/i.test(src);
 
   // Ref'd so the metadata effect doesn't re-run on every parent render.
   const onAspectRef = useRef(onAspect);
@@ -69,7 +70,18 @@ export function InspectorVideoPreview({
   }, [src, seekTo]);
 
   return (
-    <video
+    isImage ? <img
+      src={src}
+      className={className}
+      style={style}
+      alt=""
+      onLoad={(event) => {
+        const image = event.currentTarget;
+        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+          onAspectRef.current?.(image.naturalWidth / image.naturalHeight);
+        }
+      }}
+    /> : <video
       ref={ref}
       key={src}
       src={src}

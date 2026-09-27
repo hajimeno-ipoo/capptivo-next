@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Capptivo",
+  "productName": "Capptivo_Next",
   "version": "1.0.3",
   "identifier": "com.capptivo.desktop",
   "build": {

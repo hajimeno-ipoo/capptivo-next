@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Capptivo Editor</title>
+    <title>Capptivo_Next</title>
     <!--
       Splash paints before Vite/React. Inline only — no extra CSS request,
       no splash window, removed once the editor/library shell is ready.
@@ -13,7 +13,7 @@
       body {
         margin: 0;
         height: 100%;
-        background: #141414;
+        background: #f4f8ff;
       }
       #splash {
         position: fixed;
@@ -21,18 +21,44 @@
         z-index: 9999;
         display: grid;
         place-items: center;
-        background: #141414;
+        background: #f4f8ff;
+        color: #24344d;
         transition: opacity 180ms ease-out;
         pointer-events: none;
+      }
+      html.dark,
+      html.dark body,
+      html.dark #splash {
+        background: #18283d;
+      }
+      html.dark #splash {
+        color: #f5f9ff;
       }
       #splash.is-hiding {
         opacity: 0;
       }
-      #splash img {
-        width: min(220px, 48vw);
-        height: auto;
+      #splash-brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font: 600 clamp(20px, 3vw, 28px) / 1.2 system-ui, sans-serif;
+        letter-spacing: -0.03em;
+      }
+      #splash-brand img {
+        width: 72px;
+        height: 72px;
+        flex: none;
+        border-radius: 21%;
       }
     </style>
+    <script>
+      try {
+        const theme = localStorage.getItem("capptivo.theme");
+        if (theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch { /* The light theme remains available without storage. */ }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -41,15 +67,18 @@
     />
   </head>
   <body>
-    <div id="splash" aria-busy="true" aria-label="Loading Capptivo">
-      <img
-        src="/logo-capptivo.svg"
-        alt=""
-        width="220"
-        height="50"
-        decoding="sync"
-        fetchpriority="high"
-      />
+    <div id="splash" aria-busy="true" aria-label="Loading Capptivo_Next">
+      <div id="splash-brand">
+        <img
+          src="/splash-icon.png"
+          alt=""
+          width="72"
+          height="72"
+          decoding="sync"
+          fetchpriority="high"
+        />
+        <span>Capptivo_Next</span>
+      </div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/windows/editor/main.tsx"></script>

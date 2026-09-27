@@ -26,16 +26,20 @@ import {
   DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_HIGHLIGHT_OPACITY,
   CAMERA_IDENTITY,
+  CURSOR_FLASH_DURATION_S,
   blurRegionPlacement,
   blurRegionIsActive,
   computeCameraTransform,
   contentRectPixelsFromCrop,
+  createFullNormToContentNdcFromCrop,
+  cursorClickFxStart,
   drawBackgroundLayer,
   parseHexColor,
   faceCamShadowPasses,
   getCompositionLayout,
   renderRoundedRectShadowSprite,
   resolveCursorOverlay,
+  sampleCursorAtTime,
   resolveFaceCamLayout,
   drawTextClips,
   textClipFrameKey,
@@ -143,8 +147,11 @@ export async function createPixiFrameCompositor(
     // Keep the default (flat) path allocation-free. The full-size render
     // texture is created only after a non-zero 3D look is selected.
     texture: Texture.EMPTY,
-    verticesX: 12,
-    verticesY: 8,
+    // Pixi projects vertices, then interpolates each triangle linearly. A
+    // coarse grid bends straight window edges between vertices at strong Y
+    // tilt; ~20 px cells make that interpolation much less visible.
+    verticesX: 97,
+    verticesY: 65,
     x0: 0,
     y0: 0,
     x1: width,
@@ -339,7 +346,7 @@ export async function createPixiFrameCompositor(
       updateBlurRegions(inputs, screenSize, content, rect, radius, inputs.cursorTime ?? 0);
       profiler.mark("blurRegions");
 
-      updateCursor(inputs, rect);
+      updateCursor(inputs, rect, radius);
       profiler.mark("cursor");
 
       setCameraTransform(
@@ -721,7 +728,7 @@ export async function createPixiFrameCompositor(
     });
   }
 
-  function updateCursor(inputs: RenderFrameInputs, rect: Rect): void {
+  function updateCursor(inputs: RenderFrameInputs, rect: Rect, radius: number): void {
     const settings = inputs.cursorSettings;
     if (inputs.cursorTime == null || !settings || !inputs.recordingMetadata) {
       cursorOverlay.hide();
@@ -736,11 +743,36 @@ export async function createPixiFrameCompositor(
       screenContentCrop: inputs.screenContentCrop ?? null,
       loopReturn: inputs.cursorLoopReturn ?? null,
     });
+    let flashPoint: { x: number; y: number } | null = null;
+    if (settings.clickEffect === "flash") {
+      const clickStart = cursorClickFxStart(
+        inputs.recordingMetadata.cursorPressIntervals,
+        inputs.cursorTime,
+      );
+      if (clickStart !== null && inputs.cursorTime - clickStart < CURSOR_FLASH_DURATION_S) {
+        const recordedPoint = sampleCursorAtTime(inputs.recordingMetadata, clickStart);
+        if (recordedPoint) {
+          const crop = inputs.screenContentCrop;
+          const point = crop
+            ? createFullNormToContentNdcFromCrop(crop)(recordedPoint)
+            : {
+                x: Math.max(0, Math.min(1, recordedPoint.x)),
+                y: Math.max(0, Math.min(1, recordedPoint.y)),
+              };
+          flashPoint = {
+            x: rect.x + point.x * rect.width,
+            y: rect.y + point.y * rect.height,
+          };
+        }
+      }
+    }
     cursorOverlay.update({
       placement: frame?.placement ?? null,
       timeSec: inputs.cursorTime,
       freeze: inputs.cursorFreeze === true,
       videoRect: rect,
+      videoCornerRadius: radius,
+      flashPoint,
       smoothness: settings.smoothness,
       sway: settings.sway,
       motionBlur: settings.motionBlur,

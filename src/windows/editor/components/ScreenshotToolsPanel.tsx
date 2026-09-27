@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { mediaUrl } from "@/lib/platform";
 import { toBlobMediaUrl } from "../lib/mediaBlobUrl";
 import { useEditorStore } from "../store";
@@ -35,7 +36,7 @@ function hit(marks: ScreenshotMark[], p: Point): string | null {
   return null;
 }
 
-export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
+export function ScreenshotToolsPanel({ visible, canvasHost }: { visible: boolean; canvasHost?: HTMLDivElement | null }) {
   const id = useEditorStore((s) => s.screenshotId);
   const marks = useEditorStore((s) => s.screenshotMarks);
   const setMarks = useEditorStore((s) => s.setScreenshotMarks);
@@ -49,9 +50,10 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
   const [color, setColor] = useState("#ef4444");
   const [width, setWidth] = useState(6);
   const [error, setError] = useState<string | null>(null);
+  const [imageAspect, setImageAspect] = useState(16 / 9);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !visible || !canvasHost) return;
     let cancelled = false;
     let revoke: (() => void) | null = null;
     void (async () => {
@@ -62,6 +64,7 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
         image.src = blob.src;
         await image.decode();
         if (cancelled) return;
+        setImageAspect(image.naturalWidth / Math.max(1, image.naturalHeight));
         imageRef.current = image;
         const canvas = canvasRef.current;
         if (canvas) {
@@ -74,7 +77,7 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
       } catch (e) { if (!cancelled) setError(String(e)); }
     })();
     return () => { cancelled = true; imageRef.current = null; revoke?.(); };
-  }, [id]);
+  }, [id, visible, canvasHost]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -150,11 +153,26 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
   }, [selectedMarkWidth]);
   const changeSelected = (update: (mark: ScreenshotMark) => ScreenshotMark) =>
     commit(marks.map((mark) => mark.id === selected ? update(mark) : mark));
+  const selectedPoint = selectedMark?.kind === "text" ? selectedMark.at
+    : selectedMark?.kind === "shape" ? selectedMark.to
+      : selectedMark?.kind === "path" ? selectedMark.points[selectedMark.points.length - 1] : null;
+  const canvasBounds = canvasRef.current?.getBoundingClientRect();
+  const hostBounds = canvasHost?.getBoundingClientRect();
+  const propertyPosition = selectedPoint && canvasBounds && hostBounds ? {
+    left: Math.max(8, Math.min(hostBounds.width - 232,
+      canvasBounds.left - hostBounds.left + selectedPoint.x * canvasBounds.width + 16)),
+    top: Math.max(8, Math.min(hostBounds.height - 210,
+      canvasBounds.top - hostBounds.top + selectedPoint.y * canvasBounds.height + 16)),
+  } : { left: 16, top: 16 };
   return <div className={visible ? "space-y-5" : "hidden"}>
     <p className="text-xs text-muted-foreground">元画像上の描画です。背景・範囲のマスクとハイライト・文字は共通の編集機能を使います。</p>
-    <canvas ref={canvasRef} className="w-full touch-none rounded-lg border border-border bg-black"
-      style={{ cursor: tool === "select" ? "move" : "crosshair" }}
-      onPointerDown={down} onPointerMove={movePointer} onPointerUp={up} onPointerCancel={up} />
+    {visible && canvasHost && createPortal(
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/85">
+        <canvas ref={canvasRef} className="pointer-events-auto max-h-full max-w-full touch-none rounded-lg border border-primary/40 bg-black shadow-lg"
+          style={{ cursor: tool === "select" ? "move" : "crosshair", aspectRatio: imageAspect,
+            width: `min(100%, calc(100cqh * ${imageAspect}))` }}
+          onPointerDown={down} onPointerMove={movePointer} onPointerUp={up} onPointerCancel={up} />
+      </div>, canvasHost)}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     <div className="grid grid-cols-2 gap-1">{TOOLS.map((item) => <button type="button" key={item.id}
       onClick={() => setTool(item.id)} aria-pressed={tool === item.id}
@@ -169,24 +187,35 @@ export function ScreenshotToolsPanel({ visible }: { visible: boolean }) {
         if (selectedMarkHasWidth) changeSelected((mark) => mark.kind === "path"
           || (mark.kind === "shape" && mark.shape !== "mask") ? { ...mark, width: nextWidth } : mark);
       }} className="w-full accent-primary" /></label>
-    {selectedMark && <div className="space-y-2 border-t border-border pt-4">
-      <p className="text-xs font-semibold">選択中の注釈</p>
-      {selectedMark.kind === "text" && <>
-        <textarea aria-label="文字" value={selectedMark.text}
-          onChange={(event) => changeSelected((mark) => mark.kind === "text"
-            ? { ...mark, text: event.target.value } : mark)}
-          className="w-full rounded border border-border bg-background p-2 text-sm" />
-        <label className="block text-xs">文字サイズ {selectedMark.fontSize}
-          <input type="range" min={12} max={160} value={selectedMark.fontSize}
+    {selectedMark && <p className="text-xs text-muted-foreground">選択中の注釈の属性は画像上で調整できます。</p>}
+    {selectedMark && selectedPoint && canvasHost && visible && createPortal(
+      <div className="pointer-events-auto absolute z-30 w-56 space-y-3 rounded-xl border border-border bg-card p-3 text-foreground shadow-xl"
+        style={propertyPosition}>
+        <p className="text-xs font-semibold">選択中の注釈</p>
+        {selectedMark.kind === "text" && <>
+          <textarea aria-label="文字" value={selectedMark.text}
             onChange={(event) => changeSelected((mark) => mark.kind === "text"
-              ? { ...mark, fontSize: Number(event.target.value) } : mark)}
-            className="w-full accent-primary" /></label>
-      </>}
-      <input type="color" aria-label="選択した注釈の色" value={selectedMark.color}
-        onChange={(event) => changeSelected((mark) => ({ ...mark, color: event.target.value }))} />
-      <button type="button" className="block rounded border border-destructive px-2 py-1 text-xs text-destructive"
-        onClick={() => { commit(marks.filter((mark) => mark.id !== selected)); setSelected(null); }}>削除</button>
-    </div>}
+              ? { ...mark, text: event.target.value } : mark)}
+            className="w-full rounded border border-border bg-background p-2 text-sm" />
+          <label className="block text-xs">文字サイズ {selectedMark.fontSize}
+            <input type="range" min={12} max={160} value={selectedMark.fontSize}
+              onChange={(event) => changeSelected((mark) => mark.kind === "text"
+                ? { ...mark, fontSize: Number(event.target.value) } : mark)}
+              className="w-full accent-primary" /></label>
+        </>}
+        <label className="flex items-center justify-between text-xs">描画色
+          <input type="color" aria-label="選択した注釈の色" value={selectedMark.color}
+            onChange={(event) => changeSelected((mark) => ({ ...mark, color: event.target.value }))} />
+        </label>
+        {selectedMarkHasWidth && <label className="block text-xs">線の太さ {selectedMarkWidth}
+          <input type="range" min={1} max={32} value={selectedMarkWidth ?? 1}
+            onChange={(event) => { const nextWidth = Number(event.target.value); setWidth(nextWidth);
+              changeSelected((mark) => mark.kind === "path" || (mark.kind === "shape" && mark.shape !== "mask")
+                ? { ...mark, width: nextWidth } : mark); }} className="w-full accent-primary" />
+        </label>}
+        <button type="button" className="block rounded border border-destructive px-2 py-1 text-xs text-destructive"
+          onClick={() => { commit(marks.filter((mark) => mark.id !== selected)); setSelected(null); }}>削除</button>
+      </div>, canvasHost)}
     <div className="flex gap-2 border-t border-border pt-4 text-xs">
       <button type="button" disabled={past.current.length === 0} className="rounded border px-2 py-1 disabled:opacity-40"
         onClick={() => { const prev = past.current.pop(); if (!prev) return;

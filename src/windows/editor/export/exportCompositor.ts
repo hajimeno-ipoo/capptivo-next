@@ -39,7 +39,7 @@ import { shouldUseOffscreenExportCanvas } from "./exportRouting";
 import { isWindows } from "@/lib/platform";
 import { toBlobMediaUrl } from "../lib/mediaBlobUrl";
 import { faceCamFrameAt, type FaceCamTrack } from "../lib/faceCamSync";
-import { useEditorStore } from "../store";
+import { loadImage, useEditorStore } from "../store";
 
 export type ExportCompositor = {
   /** Output-sized bitmap: what the encoder captures. */
@@ -199,6 +199,25 @@ export async function createExportCompositorFromMedia(
   height: number,
   options: CompositorOptions = {},
 ): Promise<ExportCompositor> {
+  // Pin the editor state when export starts. A saved background is restored
+  // asynchronously when a project opens, so resolve its pixels before the
+  // compositor takes its one-time snapshot for every output frame.
+  const editorState = useEditorStore.getState();
+  const selectedBackground = editorState.selectedBackground;
+  let backgroundImage: HTMLImageElement | null = null;
+  if (selectedBackground) {
+    if (editorState.backgroundImage?.getAttribute("src") === selectedBackground) {
+      backgroundImage = editorState.backgroundImage;
+    } else {
+      try {
+        backgroundImage = await loadImage(selectedBackground);
+      } catch (error) {
+        media.dispose();
+        throw error;
+      }
+    }
+  }
+
   // Composite at the preview's reference resolution and let the compositor
   // downscale to the output. Keeps look values (face-cam, padding, captions)
   // calibrated at the same absolute pixels as the preview — and on the GPU
@@ -300,7 +319,6 @@ export async function createExportCompositorFromMedia(
    */
   const {
     sourceAspect,
-    backgroundImage,
     look,
     zoomFragments,
     perspectiveFragments,
@@ -318,7 +336,7 @@ export async function createExportCompositorFromMedia(
     segments: storeSegments,
     speedRanges,
     globalSpeed,
-  } = useEditorStore.getState();
+  } = editorState;
 
   const segments: TrimSegment[] =
     storeSegments.length > 0

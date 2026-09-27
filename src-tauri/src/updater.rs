@@ -189,7 +189,7 @@ async fn run_check(app: &AppHandle, prompt: Prompt) -> Result<(), String> {
         }
         if prompt == Prompt::Interactive {
             if !emit_status(app, &UpdateStatusPayload::UpToDate) {
-                notify(app, "Capptivo is up to date.", MessageDialogKind::Info);
+                notify(app, "Capptivo_Next is up to date.", MessageDialogKind::Info);
             }
         }
         return Ok(());
@@ -213,7 +213,7 @@ async fn run_check(app: &AppHandle, prompt: Prompt) -> Result<(), String> {
             notify(
                 app,
                 &format!(
-                    "Version {} is available. Open Capptivo Library to install.",
+                    "Version {} is available. Open Capptivo_Next Library to install.",
                     available.version
                 ),
                 MessageDialogKind::Info,
@@ -344,7 +344,7 @@ fn payload_from_update(update: &Update) -> UpdateAvailablePayload {
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("A new version of Capptivo is ready.")
+        .unwrap_or("A new version of Capptivo_Next is ready.")
         .to_string();
     UpdateAvailablePayload {
         version: update.version.clone(),
@@ -387,7 +387,7 @@ fn recording_busy(app: &AppHandle) -> bool {
 fn notify(app: &AppHandle, message: &str, kind: MessageDialogKind) {
     app.dialog()
         .message(message.to_string())
-        .title("Capptivo")
+        .title("Capptivo_Next")
         .kind(kind)
         .buttons(MessageDialogButtons::Ok)
         .show(|_| {});

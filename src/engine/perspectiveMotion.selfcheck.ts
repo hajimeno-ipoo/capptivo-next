@@ -1,8 +1,10 @@
 import {
   PERSPECTIVE_PIVOT_POINTS,
+  computePerspectiveEnvelope,
   createDefaultPerspectiveFragment,
   findActivePerspectiveFragment,
   normalizePerspectiveFragments,
+  perspectiveEditPreviewTime,
   perspectiveValuesAtTime,
 } from "./perspectiveMotion.ts";
 
@@ -51,6 +53,20 @@ assert(
     active.reflectionStrength === 60 &&
     active.reflectionStyle === "dots",
   "the selected block supplies its 3D values",
+);
+
+const eased = createDefaultPerspectiveFragment(2, 5);
+const editPreviewTime = perspectiveEditPreviewTime(eased);
+assert(
+  editPreviewTime > eased.start + eased.easeIn &&
+    editPreviewTime < eased.end - eased.easeOut &&
+    computePerspectiveEnvelope(eased, editPreviewTime) === 1,
+  "selecting a 3D block previews the fully applied effect",
+);
+const shortEased = { ...createDefaultPerspectiveFragment(2, 2.2), easeIn: 0.1, easeOut: 0.1 };
+assert(
+  computePerspectiveEnvelope(shortEased, perspectiveEditPreviewTime(shortEased)) === 1,
+  "even the shortest eased block has a fully applied preview frame",
 );
 
 const [legacy] = normalizePerspectiveFragments([{ id: "old", start: 2, end: 6, tiltX: 8 }], 8);

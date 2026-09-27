@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Russian. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ru: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "Запись без названия",
   "app.loading": "Загрузка…",
+
+  "editor.mode.canvas": "Холст",
+  "editor.mode.time": "Редактирование по времени",
+  "editor.timeline.open": "Открыть временную шкалу",
+  "editor.timeline.close": "Закрыть временную шкалу",
+  "editor.imageEdit": "Редактировать изображение",
+  "editor.tools": "Инструменты редактирования",
 
   "titleBar.export": "Экспорт",
 
@@ -111,11 +118,18 @@ export const ru: Record<TranslationKey, string> = {
   "bg.image": "Изображение",
   "bg.gradient": "Градиент",
   "bg.color": "Цвет",
+  "bg.macWallpaper": "Обои Mac",
+  "bg.macWallpaper.empty": "Установленные обои Mac недоступны.",
+  "bg.macWallpaper.loadFailed": "Не удалось загрузить обои Mac.",
+  "bg.macWallpaper.importFailed": "Не удалось использовать эти обои Mac.",
   "look.custom": "Свой",
   "look.uploadImage": "Загрузить изображение",
   "look.deleteImage": "Удалить изображение",
   "look.start": "Начало",
   "look.end": "Конец",
+  "clip.duration": "Длительность",
+  "clip.fragment.label": "Фрагмент",
+  "clip.fragment.placeholder": "Выберите фрагмент",
   "look.angle": "Угол",
   "look.padding": "Отступ видео (px)",
   "look.padding.hint": "Пустое пространство вокруг записи, чтобы она не касалась краёв кадра.",
@@ -242,6 +256,7 @@ export const ru: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "Рябь",
   "cursor.clickEffect.spotlight": "Прожектор",
   "cursor.clickEffect.echo": "Эхо",
+  "cursor.clickEffect.flash": "Вспышка",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -317,9 +332,9 @@ export const ru: Record<TranslationKey, string> = {
   "updater.install": "Обновить",
   "updater.dismiss": "Закрыть",
   "updater.installing": "Установка обновления…",
-  "updater.installing.detail": "Загрузка и установка версии {version}. Capptivo перезапустится.",
+  "updater.installing.detail": "Загрузка и установка версии {version}. Capptivo_Next перезапустится.",
   "updater.checking": "Проверка обновлений…",
-  "updater.upToDate": "Capptivo обновлён.",
+  "updater.upToDate": "Capptivo_Next обновлён.",
   "updater.busyRecording": "Завершите или остановите текущую запись перед обновлением.",
   "updater.error": "Не удалось проверить обновления.",
 
@@ -354,10 +369,16 @@ export const ru: Record<TranslationKey, string> = {
 
   "recorder.drag": "Перетащить",
   "recorder.recordings": "Записи",
+  "recorder.library": "Библиотека",
   "recorder.close": "Закрыть",
   "recorder.record": "Запись",
+  "recorder.screenRecording": "Запись экрана",
   "recorder.screenshot": "Снимок экрана",
+  "recorder.takeScreenshot": "Снять",
   "recorder.captureKind": "Тип захвата",
+  "recorder.captureTarget": "Источник захвата",
+  "recorder.inputs": "Входы",
+  "recorder.mode.windowScreenshotNote": "Снимок отдельного окна не включает камеру и живые аннотации.",
   "recorder.mode.display": "Экран",
   "recorder.mode.window": "Окно",
   "recorder.mode.area": "Область",
@@ -371,9 +392,9 @@ export const ru: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "Подключите iPhone или iPad кабелем, разблокируйте и нажмите «Доверять».",
   "recorder.error.screenPermission":
-    "Разрешите Capptivo в разделе Системные настройки → Конфиденциальность и безопасность → Запись экрана, затем завершите и снова откройте приложение.",
+    "Разрешите Capptivo_Next в разделе Системные настройки → Конфиденциальность и безопасность → Запись экрана, затем завершите и снова откройте приложение.",
   "recorder.error.cameraPermission":
-    "Разрешите Capptivo в разделе Системные настройки → Конфиденциальность и безопасность → Камера, чтобы записывать устройство.",
+    "Разрешите Capptivo_Next в разделе Системные настройки → Конфиденциальность и безопасность → Камера, чтобы записывать устройство.",
   "recorder.error.noDevice":
     "Подключите iPhone или iPad кабелем, затем выберите его.",
   "recorder.error.noArea": "Сначала выделите область перетаскиванием.",
@@ -389,6 +410,7 @@ export const ru: Record<TranslationKey, string> = {
   "recorder.audio": "Звук",
   "recorder.audio.off": "Без звука",
   "recorder.audio.system": "Системный звук",
+  "recorder.audio.device": "Звук устройства",
   "recorder.audio.none": "Без системного звука",
   "recorder.sources.displays": "Экраны",
   "recorder.sources.windows": "Окна",

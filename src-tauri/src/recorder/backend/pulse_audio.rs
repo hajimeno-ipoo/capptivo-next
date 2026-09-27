@@ -80,7 +80,7 @@ fn run_tap(
 
     let simple = match Simple::new(
         None,                       // default server
-        "Capptivo",                 // app name
+        "Capptivo_Next",            // app name
         Direction::Record,
         Some("@DEFAULT_MONITOR@"),  // monitor of the default sink
         "System audio",             // stream description

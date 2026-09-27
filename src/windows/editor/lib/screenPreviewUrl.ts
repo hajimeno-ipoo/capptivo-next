@@ -1,10 +1,10 @@
 /**
- * Interactive editor preview URL: prefer the downscaled proxy when ready,
- * otherwise the original. Export / `sourceVideoSize` always use `screenUrl`.
+ * Interactive editor preview URL: use the original recording so small text
+ * remains as detailed as the captured frames.
  */
 export function screenPreviewUrl(
   proxyUrl: string | null,
   screenUrl: string | null,
 ): string | null {
-  return proxyUrl ?? screenUrl;
+  return screenUrl ?? proxyUrl;
 }

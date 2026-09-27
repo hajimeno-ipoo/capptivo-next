@@ -14,6 +14,7 @@ import {
   CameraOff,
   Check,
   ChevronDown,
+  FolderOpen,
   GripVertical,
   Image as ImageIcon,
   Monitor,
@@ -73,11 +74,13 @@ export function RecorderToolbar({
   const areaSelection = useRecorderStore((s) => s.areaSelection);
   const selectedSourceId = useRecorderStore((s) => s.selectedSourceId);
   const selectedDeviceId = useRecorderStore((s) => s.selectedDeviceId);
+  const permissions = useRecorderStore((s) => s.permissions);
   const screenshotBusy = useRecorderStore((s) => s.screenshotBusy);
   const captureKind = useRecorderStore((s) => s.captureKind);
   const setCaptureKind = useRecorderStore((s) => s.setCaptureKind);
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   // Clicking a second trigger opens it *and* dismisses the first, in whichever
   // order the events land — a close only counts for the menu that owns it.
@@ -104,6 +107,34 @@ export function RecorderToolbar({
   const areaTitle = areaSize
     ? t("recorder.mode.areaSelected", { size: areaSize })
     : t("recorder.mode.areaTitle");
+
+  const sources = useRecorderStore((s) => s.sources);
+  const devices = useRecorderStore((s) => s.devices);
+  const cameraEnabled = useRecorderStore((s) => s.cameraEnabled);
+  const cameraDeviceId = useRecorderStore((s) => s.cameraDeviceId);
+  const micEnabled = useRecorderStore((s) => s.micEnabled);
+  const micDeviceId = useRecorderStore((s) => s.micDeviceId);
+  const systemAudioEnabled = useRecorderStore((s) => s.options.captureSystemAudio);
+  const selectedSource = sources.find((source) => source.id === selectedSourceId);
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId);
+  const modeLabel = t(`recorder.mode.${captureMode}`);
+  const targetName = captureMode === "area"
+    ? areaSize ?? t("recorder.error.noArea")
+    : captureMode === "device"
+      ? selectedDevice?.name ?? t("recorder.error.noDevice")
+      : selectedSource?.title || (canRecord ? modeLabel : t("recorder.error.noSource"));
+  const targetLabel = `${modeLabel} · ${targetName}`;
+  const barTargetLabel = captureMode === "window" && selectedSource?.appName
+    ? `${modeLabel} · ${selectedSource.appName}`
+    : targetLabel;
+  const activeInputs = [
+    cameraEnabled && !!cameraDeviceId && t("recorder.camera"),
+    captureKind === "video" && micEnabled && !!micDeviceId && t("recorder.mic"),
+    captureKind === "video" && systemAudioEnabled && t(captureMode === "device" ? "recorder.audio.device" : "recorder.audio.system"),
+  ].filter((item): item is string => typeof item === "string");
+  const inputSummary = activeInputs.length > 0
+    ? activeInputs.join(" · ")
+    : captureKind === "video" ? t("recorder.audio.off") : t("recorder.camera.off");
 
   const barRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -222,15 +253,128 @@ export function RecorderToolbar({
   };
 
   return (
-    <div className="relative w-fit">
-      <div
-        ref={barRef}
-        className="flex items-center gap-1 rounded-2xl border border-border bg-card p-1.5"
-      >
+    <div
+      ref={barRef}
+      data-recorder-expanded={expanded}
+      className="flex w-fit max-w-[calc(100vw-2rem)] flex-col items-center gap-2"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && expanded && !openMenu) {
+          event.stopPropagation();
+          setExpanded(false);
+        }
+      }}
+    >
+      {expanded ? (
+        <section
+          aria-label={t("recorder.settings.open")}
+          className="w-[min(38rem,calc(100vw-2rem))] rounded-[22px] border border-border bg-card p-4 text-card-foreground shadow-[0_18px_50px_rgba(23,36,51,0.18)]"
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">{t("recorder.settings.open")}</h2>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg"
+              onClick={() => { setOpenMenu(null); setExpanded(false); }}
+            >
+              <ChevronDown className="size-3.5" />
+              {t("recorder.close")}
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">{t("recorder.captureTarget")}</p>
+              <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
+                <CaptureModeMenu
+                  mode="display"
+                  label={t("recorder.mode.display")}
+                  icon={<Monitor className="size-4" />}
+                  active={captureMode === "display"}
+                  open={openMenu === "display"}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      useRecorderStore.getState().setCaptureMode("display");
+                      void useRecorderStore.getState().refreshSources({ thumbnails: true });
+                    }
+                    setMenuOpen("display", open);
+                  }}
+                />
+                {caps?.canEnumerateSources !== false ? (
+                  <CaptureModeMenu
+                    mode="window"
+                    label={t("recorder.mode.window")}
+                    icon={<AppWindowIcon />}
+                    active={captureMode === "window"}
+                    open={openMenu === "window"}
+                    onOpenChange={(open) => {
+                      if (open) {
+                        useRecorderStore.getState().setCaptureMode("window");
+                        void useRecorderStore.getState().refreshSources({ thumbnails: true });
+                      }
+                      setMenuOpen("window", open);
+                    }}
+                  />
+                ) : null}
+                {caps?.canPickArea !== false ? (
+                  <ModeBtn
+                    active={captureMode === "area"}
+                    label={areaLabel}
+                    icon={<SquareDashed className="size-4" />}
+                    title={areaTitle}
+                    onClick={() => {
+                      setOpenMenu(null);
+                      setExpanded(false);
+                      void useRecorderStore.getState().pickArea();
+                    }}
+                  />
+                ) : null}
+                {caps?.canCaptureDevice && captureKind === "video" ? (
+                  <DeviceMenu
+                    open={openMenu === "device"}
+                    onOpenChange={(open) => {
+                      if (open) useRecorderStore.getState().setCaptureMode("device");
+                      setMenuOpen("device", open);
+                    }}
+                  />
+                ) : null}
+              </div>
+              <p className="mt-2 break-words text-xs text-muted-foreground">{targetLabel}</p>
+              {captureMode !== "device" && permissions && !permissions.canRecord ? (
+                <p className="mt-1 text-xs text-red-600">{t("recorder.error.screenPermission")}</p>
+              ) : null}
+              {captureKind === "screenshot" && captureMode === "window" ? (
+                <p className="mt-1 text-xs text-muted-foreground">{t("recorder.mode.windowScreenshotNote")}</p>
+              ) : null}
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">{t("recorder.inputs")}</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <CameraMenu open={openMenu === "camera"} onOpenChange={(open) => setMenuOpen("camera", open)} />
+                {captureKind === "video" ? (
+                  <>
+                    <MicMenu open={openMenu === "mic"} onOpenChange={(open) => setMenuOpen("mic", open)} />
+                    <AudioMenu open={openMenu === "audio"} onOpenChange={(open) => setMenuOpen("audio", open)} />
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-xs font-medium text-muted-foreground">{t("recorder.language")}</span>
+              <SettingsMenu open={openMenu === "settings"} onOpenChange={(open) => setMenuOpen("settings", open)} />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-[20px] border border-border bg-card p-1.5 text-card-foreground shadow-[0_10px_30px_rgba(23,36,51,0.16)]">
         <div
           className={cn(
             CTRL,
-            "flex w-7 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing",
+            "flex w-6 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing",
           )}
           title={t("recorder.drag")}
           onPointerDown={onGripPointerDown}
@@ -243,25 +387,26 @@ export function RecorderToolbar({
         </div>
 
         {caps?.os === "macos" ? (
-          <div role="group" aria-label={t("recorder.captureKind")} className="flex shrink-0 items-center gap-0.5">
+          <div role="group" aria-label={t("recorder.captureKind")} className="flex shrink-0 items-center gap-0.5 rounded-xl bg-muted/45 p-0.5">
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className={cn(CTRL, "size-9 shrink-0 text-muted-foreground", captureKind === "video" && "bg-primary/20 text-primary hover:bg-primary/25")}
-              aria-label={t("recorder.record")}
+              size="sm"
+              className={cn(CTRL, "h-8 shrink-0 gap-1.5 rounded-lg px-2 text-xs text-muted-foreground", captureKind === "video" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+              aria-label={t("recorder.screenRecording")}
               aria-pressed={captureKind === "video"}
-              title={t("recorder.record")}
+              title={t("recorder.screenRecording")}
               disabled={screenshotBusy}
               onClick={() => { setOpenMenu(null); setCaptureKind("video"); }}
             >
               <Video className="size-4" />
+              <span>{t("recorder.screenRecording")}</span>
             </Button>
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className={cn(CTRL, "size-9 shrink-0 text-muted-foreground", captureKind === "screenshot" && "bg-primary/20 text-primary hover:bg-primary/25")}
+              size="sm"
+              className={cn(CTRL, "h-8 shrink-0 gap-1.5 rounded-lg px-2 text-xs text-muted-foreground", captureKind === "screenshot" && "bg-primary text-primary-foreground hover:bg-primary/90")}
               aria-label={t("recorder.screenshot")}
               aria-pressed={captureKind === "screenshot"}
               title={t("recorder.screenshot")}
@@ -269,110 +414,31 @@ export function RecorderToolbar({
               onClick={() => { setOpenMenu(null); setCaptureKind("screenshot"); }}
             >
               <ImageIcon className="size-4" />
+              <span>{t("recorder.screenshot")}</span>
             </Button>
           </div>
         ) : null}
 
         {caps?.os === "macos" ? <Divider /> : null}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(CTRL, "size-9 shrink-0")}
-          aria-label={t("recorder.recordings")}
-          title={t("recorder.recordings")}
-          onClick={() => void commands.openLibrary()}
+        <div
+          className={cn(
+            "flex h-9 min-w-0 shrink items-center gap-1.5 px-2 text-foreground",
+            captureMode === "window" ? "max-w-56" : "max-w-44",
+          )}
+          title={targetLabel}
         >
-          <img src="/logo.svg" alt="" className="size-5 object-contain" />
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(CTRL, "size-9 shrink-0 text-muted-foreground")}
-          aria-label={t("recorder.close")}
-          onClick={() => void commands.hideRecorder()}
-        >
-          <X className="size-4" />
-        </Button>
-
-        <Divider />
-
-        <div className="flex items-center gap-0.5">
-          <CaptureModeMenu
-            mode="display"
-            label={t("recorder.mode.display")}
-            icon={<Monitor className="size-3.5" />}
-            active={captureMode === "display"}
-            open={openMenu === "display"}
-            onOpenChange={(open) => {
-              if (open) {
-                useRecorderStore.getState().setCaptureMode("display");
-                void useRecorderStore.getState().refreshSources({
-                  thumbnails: true,
-                });
-              }
-              setMenuOpen("display", open);
-            }}
-          />
-          {caps?.canEnumerateSources !== false ? (
-            <CaptureModeMenu
-              mode="window"
-              label={t("recorder.mode.window")}
-              icon={<AppWindowIcon />}
-              active={captureMode === "window"}
-              open={openMenu === "window"}
-              onOpenChange={(open) => {
-                if (open) {
-                  useRecorderStore.getState().setCaptureMode("window");
-                  void useRecorderStore.getState().refreshSources({
-                    thumbnails: true,
-                  });
-                }
-                setMenuOpen("window", open);
-              }}
-            />
-          ) : null}
-          {caps?.canPickArea !== false ? (
-            <ModeBtn
-              active={captureMode === "area"}
-              label={areaLabel}
-              icon={<SquareDashed className="size-3.5" />}
-              title={areaTitle}
-              onClick={() => void useRecorderStore.getState().pickArea()}
-            />
-          ) : null}
-          {caps?.canCaptureDevice && captureKind === "video" ? (
-            <DeviceMenu
-              open={openMenu === "device"}
-              onOpenChange={(open) => {
-                if (open) useRecorderStore.getState().setCaptureMode("device");
-                setMenuOpen("device", open);
-              }}
-            />
-          ) : null}
+          {captureMode === "window" ? <AppWindowIcon /> : captureMode === "area" ? <SquareDashed className="size-4 shrink-0" /> : captureMode === "device" ? <Smartphone className="size-4 shrink-0" /> : <Monitor className="size-4 shrink-0" />}
+          <span className="min-w-0 truncate text-xs font-medium">{barTargetLabel}</span>
         </div>
 
         <Divider />
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          <CameraMenu
-            open={openMenu === "camera"}
-            onOpenChange={(open) => setMenuOpen("camera", open)}
-          />
-          {captureKind === "video" ? <>
-            <MicMenu
-              open={openMenu === "mic"}
-              onOpenChange={(open) => setMenuOpen("mic", open)}
-            />
-            <AudioMenu
-              open={openMenu === "audio"}
-              onOpenChange={(open) => setMenuOpen("audio", open)}
-            />
-          </> : null}
-        </div>
+        <div
+          className="min-w-0 max-w-32 shrink truncate px-1 text-left text-[11px] text-muted-foreground"
+          title={inputSummary}
+          aria-label={`${t("recorder.inputs")}: ${inputSummary}`}
+        >{inputSummary}</div>
 
         <Divider />
 
@@ -393,22 +459,54 @@ export function RecorderToolbar({
           <Pencil className="size-4" />
         </Button>
 
-        <SettingsMenu
-          open={openMenu === "settings"}
-          onOpenChange={(open) => setMenuOpen("settings", open)}
-        />
-
         <Button
           type="button"
           size="sm"
           disabled={!canRecord || screenshotBusy}
           onClick={captureKind === "screenshot" && caps?.os === "macos" ? onScreenshot : onRecord}
-          className="h-9 shrink-0 gap-2 rounded-xl px-3.5 font-semibold"
+          className="h-9 shrink-0 gap-2 rounded-xl bg-primary px-3.5 font-semibold text-primary-foreground hover:bg-primary/90"
         >
           {captureKind === "screenshot" && caps?.os === "macos"
             ? <ImageIcon className="size-4" />
             : <span className="size-2 rounded-full bg-primary-foreground" />}
-          {captureKind === "screenshot" && caps?.os === "macos" ? t("recorder.screenshot") : t("recorder.record")}
+          {screenshotBusy ? t("app.loading") : captureKind === "screenshot" && caps?.os === "macos" ? t("recorder.takeScreenshot") : t("recorder.record")}
+        </Button>
+
+        <Divider />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9 shrink-0 text-muted-foreground"
+          aria-label={t("recorder.library")}
+          title={t("recorder.library")}
+          onClick={() => void commands.openLibrary()}
+        >
+          <FolderOpen className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("size-9 shrink-0 text-muted-foreground", expanded && "bg-primary/10 text-primary")}
+          aria-label={t("recorder.settings.open")}
+          aria-expanded={expanded}
+          title={t("recorder.settings.open")}
+          onClick={() => { setOpenMenu(null); setExpanded((value) => !value); }}
+        >
+          <Settings className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9 shrink-0 text-muted-foreground"
+          aria-label={t("recorder.close")}
+          title={t("recorder.close")}
+          onClick={() => void commands.hideRecorder()}
+        >
+          <X className="size-4" />
         </Button>
       </div>
     </div>
@@ -535,7 +633,7 @@ function DeviceMenu({
 
       {devices.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs leading-relaxed text-muted-foreground">
-          {deviceError ?? t("recorder.devices.empty")}
+          {loading ? t("app.loading") : deviceError ?? t("recorder.devices.empty")}
         </p>
       ) : null}
     </RecorderMenu>
@@ -718,8 +816,10 @@ function AudioMenu({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useI18n();
+  const captureMode = useRecorderStore((s) => s.captureMode);
   const enabled = useRecorderStore((s) => s.options.captureSystemAudio);
   const setOption = useRecorderStore((s) => s.setOption);
+  const enabledLabel = t(captureMode === "device" ? "recorder.audio.device" : "recorder.audio.system");
 
   return (
     <RecorderMenu
@@ -736,7 +836,7 @@ function AudioMenu({
               <VolumeX className="size-3.5" />
             )
           }
-          label={enabled ? t("recorder.audio") : t("recorder.audio.off")}
+          label={enabled ? enabledLabel : t("recorder.audio.off")}
         />
       }
     >
@@ -750,7 +850,7 @@ function AudioMenu({
         selected={enabled}
         onSelect={() => setOption("captureSystemAudio", true)}
       >
-        {t("recorder.audio.system")}
+        {enabledLabel}
       </SelectMenuItem>
     </RecorderMenu>
   );
@@ -896,7 +996,7 @@ function SourceMenuContent({
 
       {filtered.length === 0 ? (
         <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-          {t("recorder.sources.empty")}
+          {loading ? t("app.loading") : t("recorder.sources.empty")}
         </p>
       ) : null}
     </>
@@ -951,17 +1051,17 @@ const ModeBtn = forwardRef<
     disabled={disabled}
     className={cn(
       CTRL,
-      "flex w-[3.6rem] flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium transition-colors",
+      "flex h-10 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors",
       "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-      "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-      active && "bg-muted text-foreground",
+      "data-[state=open]:bg-primary/10 data-[state=open]:text-primary",
+      active && "bg-primary/10 text-primary",
       disabled && "pointer-events-none opacity-35",
       className,
     )}
     {...props}
   >
     {icon}
-    <span className="leading-none">{label}</span>
+    <span className="min-w-0 truncate">{label}</span>
   </button>
 ));
 ModeBtn.displayName = "ModeBtn";

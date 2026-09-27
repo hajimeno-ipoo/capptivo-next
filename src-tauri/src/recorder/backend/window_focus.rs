@@ -27,7 +27,7 @@ pub fn focus(window_id: u32) -> AppResult<()> {
     let options = CFDictionary::from_CFType_pairs(&[(prompt_key, CFBoolean::true_value())]);
     if unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef().cast()) } == 0 {
         return Err(AppError::Other(
-            "macOS の確認画面で Capptivo のアクセシビリティを許可し、ウィンドウをもう一度選択してください。".into(),
+            "macOS の確認画面で Capptivo_Next のアクセシビリティを許可し、ウィンドウをもう一度選択してください。".into(),
         ));
     }
     let (pid, _, _, _) = window_prepare::window_meta(window_id)?;

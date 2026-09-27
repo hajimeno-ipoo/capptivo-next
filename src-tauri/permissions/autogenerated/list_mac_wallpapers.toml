@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-mac-wallpapers"
+description = "Enables the list_mac_wallpapers command without any pre-configured scope."
+commands.allow = ["list_mac_wallpapers"]
+
+[[permission]]
+identifier = "deny-list-mac-wallpapers"
+description = "Denies the list_mac_wallpapers command without any pre-configured scope."
+commands.deny = ["list_mac_wallpapers"]

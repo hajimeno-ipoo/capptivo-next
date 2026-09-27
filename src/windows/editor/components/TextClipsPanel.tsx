@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { drawTextClips, type TextClip } from "@/engine";
 import { commands } from "@/ipc/bindings";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useI18n } from "@/lib/settings";
 import { useEditorStore } from "../store";
 import { screenPreviewUrl } from "../lib/screenPreviewUrl";
+import { formatTimelineTime } from "../lib/timelineMath";
 import {
   InspectorCompositionFrame,
   type InspectorCompositionLayout,
 } from "./InspectorCompositionFrame";
 import { FieldLabel, SectionLabel } from "./ui";
+import { ClipTimingDisplay } from "./ClipTimingDisplay";
 
 let systemFontsRequest: Promise<string[]> | null = null;
 
@@ -26,7 +36,11 @@ function loadSystemFonts(): Promise<string[]> {
   return systemFontsRequest;
 }
 
-export function TextClipsPanel({ composition }: { composition: InspectorCompositionLayout }) {
+export function TextClipsPanel({ composition, canvasHost, onSeek }: {
+  composition: InspectorCompositionLayout;
+  canvasHost?: HTMLDivElement | null;
+  onSeek: (time: number) => void;
+}) {
   const { t } = useI18n();
   const clips = useEditorStore((s) => s.textClips);
   const selectedId = useEditorStore((s) => s.selectedTextClipId);
@@ -44,6 +58,17 @@ export function TextClipsPanel({ composition }: { composition: InspectorComposit
     s.isPlaying ? undefined : s.currentTime,
   );
   const [systemFonts, setSystemFonts] = useState<string[] | null>(null);
+  const sortedClips = [...clips].sort(
+    (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
+  );
+  const selectClipAndSeek = (id: string) => {
+    const clip = clips.find((candidate) => candidate.id === id);
+    if (!clip) return;
+    const { isPlaying, setPlaying } = useEditorStore.getState();
+    if (isPlaying) setPlaying(false);
+    selectTextClip(id);
+    onSeek(clip.start);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +93,27 @@ export function TextClipsPanel({ composition }: { composition: InspectorComposit
         {t("text.add")}
       </Button>
 
+      {sortedClips.length > 0 && (
+        <div className="space-y-2">
+          <FieldLabel htmlFor="inspector-text-fragment">{`${t("text.label")} · ${t("clip.fragment.label")}`}</FieldLabel>
+          <Select value={selected?.id} onValueChange={selectClipAndSeek}>
+            <SelectTrigger id="inspector-text-fragment" className="h-9 w-full">
+              <SelectValue placeholder={t("clip.fragment.placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedClips.map((clip, index) => (
+                <SelectItem key={clip.id} value={clip.id}
+                  onPointerUp={() => { if (selected?.id === clip.id) selectClipAndSeek(clip.id); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" && selected?.id === clip.id) selectClipAndSeek(clip.id); }}>
+                  {`${index + 1}. ${formatTimelineTime(clip.start)} – ${formatTimelineTime(clip.end)}`}
+                  {` · ${clip.text.trim().replace(/\s+/g, " ").slice(0, 24) || t("text.label")}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {selected && previewUrl && (
         <TextClipPreview
           videoUrl={previewUrl}
@@ -80,17 +126,13 @@ export function TextClipsPanel({ composition }: { composition: InspectorComposit
           onBeginMove={beginTimelineEdit}
           onEndMove={endTimelineEdit}
           composition={composition}
+          canvasHost={canvasHost}
         />
       )}
 
       {selected && (
         <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t("text.selected")}</span>
-            <span className="tabular-nums">
-              {selected.start.toFixed(2)}s – {selected.end.toFixed(2)}s
-            </span>
-          </div>
+          <ClipTimingDisplay start={selected.start} end={selected.end} />
 
           <div className="space-y-1.5">
             <FieldLabel htmlFor="text-clip-content" hint={t("text.content.hint")}>
@@ -198,6 +240,7 @@ function TextClipPreview({
   onBeginMove,
   onEndMove,
   composition,
+  canvasHost,
 }: {
   videoUrl: string;
   duration: number;
@@ -209,11 +252,13 @@ function TextClipPreview({
   onBeginMove: () => void;
   onEndMove: () => void;
   composition: InspectorCompositionLayout;
+  canvasHost?: HTMLDivElement | null;
 }) {
   const { t } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
   const textCanvasRef = useRef<HTMLCanvasElement>(null);
   const [stageWidth, setStageWidth] = useState(0);
+  const { width: compositionWidth, height: compositionHeight } = composition.stageDimensions;
   const dragRef = useRef<{
     id: string;
     pointerId: number;
@@ -231,12 +276,13 @@ function TextClipPreview({
     const observer = new ResizeObserver(update);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, []);
+  }, [canvasHost]);
 
   useEffect(() => {
     const canvas = textCanvasRef.current;
     if (!canvas) return;
-    const { width, height } = composition.stageDimensions;
+    const width = compositionWidth;
+    const height = compositionHeight;
     if (width <= 0 || height <= 0) return;
     canvas.width = width;
     canvas.height = height;
@@ -244,7 +290,7 @@ function TextClipPreview({
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     drawTextClips(ctx, clips, width, height, (seekTo ?? 0) * 1000);
-  }, [clips, seekTo, composition.stageDimensions.height, composition.stageDimensions.width]);
+  }, [clips, seekTo, compositionHeight, compositionWidth, canvasHost]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>, clip: TextClip) => {
@@ -303,6 +349,7 @@ function TextClipPreview({
   return (
     <div className="space-y-1.5">
       <div className="text-[11px] text-muted-foreground">{t("text.position.hint")}</div>
+      {canvasHost && createPortal(<div className="pointer-events-auto absolute inset-0">
       <InspectorCompositionFrame
         ref={stageRef}
         videoUrl={videoUrl}
@@ -351,6 +398,7 @@ function TextClipPreview({
           );
         })}
       </InspectorCompositionFrame>
+      </div>, canvasHost)}
       {duration > 0 && (
         <div className="text-right text-[10px] tabular-nums text-muted-foreground">
           {t("text.selected")}: {clips.find((clip) => clip.id === selectedId)?.start.toFixed(2)}s –{" "}

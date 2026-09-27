@@ -36,6 +36,8 @@
     "allow-save-custom-background",
     "allow-list-custom-backgrounds",
     "allow-delete-custom-background",
+    "allow-list-mac-wallpapers",
+    "allow-import-mac-wallpaper",
     "allow-ensure-seekable-recording",
     "allow-check-export-disk-space",
     "allow-begin-export",

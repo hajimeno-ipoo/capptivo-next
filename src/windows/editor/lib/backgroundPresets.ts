@@ -15,6 +15,8 @@ export interface BackgroundPreset {
   src: string;
   /** CSS used for the swatch preview in the panel. */
   previewCss: string;
+  /** Imported macOS wallpaper; shown in its own tab, not the image gallery. */
+  isMacWallpaper?: boolean;
 }
 
 export interface GradientStop {

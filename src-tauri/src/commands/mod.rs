@@ -91,6 +91,8 @@ macro_rules! command_handlers {
             $crate::commands::backgrounds::save_custom_background,
             $crate::commands::backgrounds::list_custom_backgrounds,
             $crate::commands::backgrounds::delete_custom_background,
+            $crate::commands::backgrounds::list_mac_wallpapers,
+            $crate::commands::backgrounds::import_mac_wallpaper,
             // export
             $crate::commands::export::ensure_seekable_recording,
             $crate::commands::export::check_export_disk_space,

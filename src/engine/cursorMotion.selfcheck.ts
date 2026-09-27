@@ -4,6 +4,8 @@ import {
   CURSOR_CLICK_FREEZE_S,
   CursorMotionState,
   cursorBounceScale,
+  cursorClickFxProgress,
+  cursorClickFxStart,
   nearCursorClick,
 } from "./cursorMotion.ts";
 
@@ -81,6 +83,20 @@ assert(
   const b = cursorBounceScale([{ start: 0, end: 0.05 }], 0.175, 0.2);
   assert(b < 1 && b >= 0.72, `bounce mid-pulse scale=${b}`);
   assert(cursorBounceScale([{ start: 0, end: 0.05 }], 0.5, 0.2) === 1, "bounce done");
+}
+
+{
+  const clicks = [{ start: 1, end: 1.05 }];
+  assert(cursorClickFxProgress(clicks, 1, "flash") === 1, "flash starts at click");
+  assert(cursorClickFxProgress(clicks, 1.2, "flash") === 1, "flash holds full brightness");
+  const flashMid = cursorClickFxProgress(clicks, 1.5, "flash");
+  assert(flashMid > 0.49 && flashMid < 0.51, "flash fades after the hold");
+  assert(cursorClickFxProgress(clicks, 1.81, "flash") === 0, "flash ends after 0.8 seconds");
+  assert(cursorClickFxProgress(clicks, 1, "ripple") === 0, "other effects keep their delay");
+  assert(
+    cursorClickFxStart([...clicks, { start: 1.2, end: 1.25 }], 1.3) === 1.2,
+    "flash anchor uses the latest recorded click",
+  );
 }
 
 console.log("cursorMotion.selfcheck: ok");

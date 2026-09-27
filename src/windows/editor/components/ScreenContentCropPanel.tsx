@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { clampScreenContentCropNorm, type ScreenContentCropNorm } from "@/engine";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ type ScreenContentCropPanelProps = {
   /** Field label; defaults to the screen-recording crop copy. */
   label?: string;
   hint?: string;
+  canvasHost?: HTMLDivElement | null;
 };
 
 /**
@@ -53,6 +55,7 @@ export function ScreenContentCropPanel({
   className,
   label,
   hint,
+  canvasHost,
 }: ScreenContentCropPanelProps) {
   const { t } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -78,6 +81,35 @@ export function ScreenContentCropPanel({
     pick,
     onChange: (_key, next) => onChange(clampScreenContentCropNorm(next)),
   });
+
+  const cropStage = activeRect && (
+    <div
+      ref={stageRef}
+      className={cn("relative select-none", canvasHost ? "pointer-events-auto max-h-full max-w-full" : "w-full")}
+      {...handlers}
+      style={{
+        aspectRatio: stageAspect > 0 ? stageAspect : 16 / 9,
+        width: canvasHost ? `min(100%, calc(100cqh * ${stageAspect}))` : undefined,
+        cursor,
+      }}
+    >
+      <div className="absolute inset-0 overflow-hidden bg-muted">
+        <InspectorVideoPreview src={videoUrl} seekTo={seekTo} className="h-full w-full object-contain"
+          onAspect={fileAspect === undefined ? setMeasuredAspect : undefined} />
+        <div className="pointer-events-none absolute border-2 border-primary" style={{
+          left: `${activeRect.x * 100}%`, top: `${activeRect.y * 100}%`,
+          width: `${activeRect.width * 100}%`, height: `${activeRect.height * 100}%`,
+          boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.4)",
+        }} />
+      </div>
+      <div className="pointer-events-none absolute inset-0 z-10">
+        {(["nw", "ne", "se", "sw"] as const).map((h) => (
+          <div key={h} className="absolute border-2 border-background bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.4),0_1px_4px_rgba(0,0,0,0.5)]"
+            style={cornerHandleOverlayStyle(activeRect, h, CROP_HANDLE_SIZE)} />
+        ))}
+      </div>
+    </div>
+  );
 
   if (!hasBackground) {
     return null;
@@ -116,49 +148,9 @@ export function ScreenContentCropPanel({
         )}
       </div>
 
-      {activeRect && (
-        <div
-          ref={stageRef}
-          className="relative w-full select-none"
-          {...handlers}
-          style={{
-            aspectRatio: stageAspect > 0 ? stageAspect : 16 / 9,
-            cursor,
-          }}
-        >
-          {/*
-            9999px "outside" dim must live inside overflow-hidden, or it shades the
-            whole editor. Handles stay on a sibling with overflow visible.
-          */}
-          <div className="absolute inset-0 overflow-hidden rounded-none bg-muted">
-            <InspectorVideoPreview
-              src={videoUrl}
-              seekTo={seekTo}
-              className="h-full w-full object-contain"
-              onAspect={fileAspect === undefined ? setMeasuredAspect : undefined}
-            />
-            <div
-              className="pointer-events-none absolute border-2 border-primary"
-              style={{
-                left: `${activeRect.x * 100}%`,
-                top: `${activeRect.y * 100}%`,
-                width: `${activeRect.width * 100}%`,
-                height: `${activeRect.height * 100}%`,
-                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.4)",
-              }}
-            />
-          </div>
-          <div className="absolute inset-0 z-10">
-            {(["nw", "ne", "se", "sw"] as const).map((h) => (
-              <div
-                key={h}
-                className="pointer-events-none absolute rounded-none border-2 border-background bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.4),0_1px_4px_rgba(0,0,0,0.5)]"
-                style={cornerHandleOverlayStyle(activeRect, h, CROP_HANDLE_SIZE)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {activeRect && (canvasHost
+        ? createPortal(<div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/75">{cropStage}</div>, canvasHost)
+        : cropStage)}
     </div>
   );
 }

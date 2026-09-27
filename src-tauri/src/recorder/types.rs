@@ -13,6 +13,8 @@ pub struct CaptureSource {
     pub id: String,
     pub kind: CaptureSourceKind,
     pub title: String,
+    /// Owning application name for a window, when the platform provides it.
+    pub app_name: Option<String>,
     pub width: u32,
     pub height: u32,
     pub is_primary: bool,

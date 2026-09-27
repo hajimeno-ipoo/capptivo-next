@@ -31,8 +31,8 @@ export function OverlayTimelineBlock({ region, selected, resizable = true, onRes
             ? "border-amber-200 bg-amber-500/80"
             : "border-transparent bg-amber-500/55 hover:bg-amber-500/70"
           : selected
-            ? "border-sky-200 bg-sky-600/85"
-            : "border-transparent bg-sky-700/65 hover:bg-sky-600/75",
+            ? "border-indigo-700 bg-indigo-200"
+            : "border-transparent bg-indigo-300 hover:bg-indigo-200",
       )}
     >
       {resizable && (
@@ -41,7 +41,7 @@ export function OverlayTimelineBlock({ region, selected, resizable = true, onRes
           <TimelineResizePill edge="end" hoverGroup="overlay" show={selected} onPointerDown={(e) => onResizePointerDown("end", e)} />
         </>
       )}
-      <div className="pointer-events-none flex items-center gap-1 px-2 text-[10px] font-semibold text-white">
+      <div className={cn("pointer-events-none flex items-center gap-1 px-2 text-[10px] font-semibold", highlight ? "text-white" : "text-indigo-950")}>
         {highlight ? <Focus className="size-3.5" aria-hidden /> : <Shield className="size-3.5" aria-hidden />}
         <span>{t(highlight ? "blur.highlight" : "blur.mask")}</span>
       </div>

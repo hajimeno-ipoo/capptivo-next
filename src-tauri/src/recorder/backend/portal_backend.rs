@@ -71,6 +71,7 @@ impl CaptureBackend for PortalBackend {
             id: PORTAL_SOURCE_ID.into(),
             kind: CaptureSourceKind::Display,
             title: "Screen or window (system picker)".into(),
+            app_name: None,
             width: 0,
             height: 0,
             is_primary: true,

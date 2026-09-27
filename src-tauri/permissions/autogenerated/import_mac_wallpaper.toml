@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-mac-wallpaper"
+description = "Enables the import_mac_wallpaper command without any pre-configured scope."
+commands.allow = ["import_mac_wallpaper"]
+
+[[permission]]
+identifier = "deny-import-mac-wallpaper"
+description = "Denies the import_mac_wallpaper command without any pre-configured scope."
+commands.deny = ["import_mac_wallpaper"]

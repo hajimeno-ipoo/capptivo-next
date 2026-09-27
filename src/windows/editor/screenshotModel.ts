@@ -56,11 +56,42 @@ export function parseScreenshotEdits(value: unknown): ScreenshotEdits {
   };
 }
 
-export function screenshotStage(source: { width: number; height: number }, edits: ScreenshotEdits) {
+export function screenshotStage(
+  source: { width: number; height: number },
+  edits: ScreenshotEdits,
+  hasBackground = false,
+  backgroundType: "image" | "gradient" | "color" = "image",
+) {
   const stage = resolveStageSize(edits.aspectRatioPresetId, source);
-  const scale = Math.max(source.width, source.height) / Math.max(stage.width, stage.height);
+  const baseScale = Math.max(source.width, source.height) / Math.max(stage.width, stage.height);
+  const params = resolveRecordingLayoutParams({
+    presetId: edits.aspectRatioPresetId,
+    sourceAspect: source.width / source.height,
+    sourceVideoSize: source,
+    hasSelectedBackground: hasBackground || edits.look.devicePadding > 0,
+    hasImageBackground: hasBackground && backgroundType === "image" || edits.look.devicePadding > 0,
+    devicePadding: edits.look.devicePadding,
+    screenContentCrop: edits.crop,
+  });
+  const video = getCompositionLayout(
+    params.sourceAspect, stage.width, stage.height, params.devicePadding,
+  ).video;
+  // A background or padding makes the screenshot smaller than the stage. Size
+  // the output from the screenshot rect so its remaining source pixels are not
+  // discarded merely to fit the surrounding canvas.
+  const preferredScale = Math.max(
+    baseScale,
+    source.width * edits.crop.width / video.width,
+    source.height * edits.crop.height / video.height,
+  );
+  // Very large padding can leave a tiny recording rect. Keep the still within
+  // a practical GPU canvas size while never reducing the original long edge.
+  const maxOutputEdge = Math.max(8192, source.width, source.height);
+  const scale = Math.min(preferredScale, maxOutputEdge / Math.max(stage.width, stage.height));
+  const fullSource = edits.crop.x === 0 && edits.crop.y === 0
+    && edits.crop.width === 1 && edits.crop.height === 1;
   const output = edits.aspectRatioPresetId === "recording"
-    ? source
+    && params.devicePadding === 0 && fullSource ? source
     : { width: Math.max(2, Math.round(stage.width * scale)), height: Math.max(2, Math.round(stage.height * scale)) };
   return { stage, output };
 }
@@ -69,7 +100,7 @@ export function screenshotRecordingRect(
   source: { width: number; height: number }, edits: ScreenshotEdits,
   hasBackground: boolean, backgroundType: "image" | "gradient" | "color",
 ) {
-  const { stage, output } = screenshotStage(source, edits);
+  const { stage, output } = screenshotStage(source, edits, hasBackground, backgroundType);
   const params = resolveRecordingLayoutParams({
     presetId: edits.aspectRatioPresetId,
     sourceAspect: source.width / source.height,

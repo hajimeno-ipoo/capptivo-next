@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** German. Typed against `TranslationKey` so a missing key is a compile error. */
 export const de: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "Unbenannte Aufnahme",
   "app.loading": "Wird geladen…",
+
+  "editor.mode.canvas": "Leinwand",
+  "editor.mode.time": "Zeitbearbeitung",
+  "editor.timeline.open": "Zeitleiste öffnen",
+  "editor.timeline.close": "Zeitleiste schließen",
+  "editor.imageEdit": "Bild bearbeiten",
+  "editor.tools": "Bearbeitungswerkzeuge",
 
   "titleBar.export": "Exportieren",
 
@@ -111,11 +118,18 @@ export const de: Record<TranslationKey, string> = {
   "bg.image": "Bild",
   "bg.gradient": "Verlauf",
   "bg.color": "Farbe",
+  "bg.macWallpaper": "Mac-Hintergründe",
+  "bg.macWallpaper.empty": "Keine installierten Mac-Hintergründe verfügbar.",
+  "bg.macWallpaper.loadFailed": "Mac-Hintergründe konnten nicht geladen werden.",
+  "bg.macWallpaper.importFailed": "Dieser Mac-Hintergrund konnte nicht verwendet werden.",
   "look.custom": "Eigene",
   "look.uploadImage": "Bild hochladen",
   "look.deleteImage": "Bild löschen",
   "look.start": "Start",
   "look.end": "Ende",
+  "clip.duration": "Dauer",
+  "clip.fragment.label": "Abschnitt",
+  "clip.fragment.placeholder": "Abschnitt auswählen",
   "look.angle": "Winkel",
   "look.padding": "Video-Abstand (px)",
   "look.padding.hint": "Leerer Raum um die Aufnahme, damit sie den Bildrand nicht berührt.",
@@ -242,6 +256,7 @@ export const de: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "Welle",
   "cursor.clickEffect.spotlight": "Scheinwerfer",
   "cursor.clickEffect.echo": "Echo",
+  "cursor.clickEffect.flash": "Blitz",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -317,9 +332,9 @@ export const de: Record<TranslationKey, string> = {
   "updater.install": "Aktualisieren",
   "updater.dismiss": "Schließen",
   "updater.installing": "Update wird installiert…",
-  "updater.installing.detail": "Version {version} wird heruntergeladen und installiert. Capptivo startet neu.",
+  "updater.installing.detail": "Version {version} wird heruntergeladen und installiert. Capptivo_Next startet neu.",
   "updater.checking": "Suche nach Updates…",
-  "updater.upToDate": "Capptivo ist auf dem neuesten Stand.",
+  "updater.upToDate": "Capptivo_Next ist auf dem neuesten Stand.",
   "updater.busyRecording": "Beende oder stoppe die aktuelle Aufnahme, bevor du aktualisierst.",
   "updater.error": "Updates konnten nicht geprüft werden.",
 
@@ -355,10 +370,16 @@ export const de: Record<TranslationKey, string> = {
 
   "recorder.drag": "Ziehen",
   "recorder.recordings": "Aufnahmen",
+  "recorder.library": "Mediathek",
   "recorder.close": "Schließen",
   "recorder.record": "Aufnehmen",
+  "recorder.screenRecording": "Bildschirmaufnahme",
   "recorder.screenshot": "Screenshot",
+  "recorder.takeScreenshot": "Aufnehmen",
   "recorder.captureKind": "Aufnahmetyp",
+  "recorder.captureTarget": "Aufnahmequelle",
+  "recorder.inputs": "Eingänge",
+  "recorder.mode.windowScreenshotNote": "Ein Screenshot eines einzelnen Fensters enthält weder Kamera noch Live-Anmerkungen.",
   "recorder.mode.display": "Bildschirm",
   "recorder.mode.window": "Fenster",
   "recorder.mode.area": "Bereich",
@@ -372,9 +393,9 @@ export const de: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "iPhone oder iPad per Kabel verbinden, entsperren und auf Vertrauen tippen.",
   "recorder.error.screenPermission":
-    "Capptivo in Systemeinstellungen → Datenschutz & Sicherheit → Bildschirmaufnahme erlauben, dann die App beenden und neu öffnen.",
+    "Capptivo_Next in Systemeinstellungen → Datenschutz & Sicherheit → Bildschirmaufnahme erlauben, dann die App beenden und neu öffnen.",
   "recorder.error.cameraPermission":
-    "Capptivo in Systemeinstellungen → Datenschutz & Sicherheit → Kamera erlauben, um ein Gerät aufzunehmen.",
+    "Capptivo_Next in Systemeinstellungen → Datenschutz & Sicherheit → Kamera erlauben, um ein Gerät aufzunehmen.",
   "recorder.error.noDevice":
     "iPhone oder iPad per Kabel verbinden und dann auswählen.",
   "recorder.error.noArea": "Zuerst einen Bereich durch Ziehen auswählen.",
@@ -391,6 +412,7 @@ export const de: Record<TranslationKey, string> = {
   "recorder.audio": "Audio",
   "recorder.audio.off": "Kein Audio",
   "recorder.audio.system": "Systemaudio",
+  "recorder.audio.device": "Geräteton",
   "recorder.audio.none": "Kein Systemaudio",
   "recorder.sources.displays": "Bildschirme",
   "recorder.sources.windows": "Fenster",

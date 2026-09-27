@@ -23,8 +23,8 @@ export function ZoomTimelineBlock({ fragment, selected, resizable = true, onResi
       className={cn(
         "group/zoom relative flex h-full w-full min-w-[2.75rem] items-center justify-center overflow-hidden rounded-[10px] transition-[background-color,border-color,box-shadow] duration-150",
         selected
-          ? "border border-violet-400/75 bg-[#643690] shadow-[inset_0_0_0_1px_rgba(168,85,247,0.4)]"
-          : "border border-transparent bg-gradient-to-r from-[#4a2a69] via-[#553075] to-[#643690] hover:from-[#593180] hover:via-[#643690] hover:to-[#733da7]",
+          ? "border border-violet-700 bg-violet-300 shadow-[inset_0_0_0_1px_rgba(109,40,217,0.35)]"
+          : "border border-transparent bg-gradient-to-r from-fuchsia-300 via-violet-300 to-violet-400 hover:from-fuchsia-200 hover:via-violet-200 hover:to-violet-300",
       )}
     >
       {resizable && (
@@ -44,7 +44,7 @@ export function ZoomTimelineBlock({ fragment, selected, resizable = true, onResi
         </>
       )}
 
-      <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-white select-none">
+      <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-violet-950 select-none">
         <div className="flex items-center gap-1">
           <ZoomIn className="size-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
           <span className="text-[11px] font-semibold tracking-tight tabular-nums">
@@ -53,7 +53,7 @@ export function ZoomTimelineBlock({ fragment, selected, resizable = true, onResi
         </div>
         <div
           className={cn(
-            "flex items-center gap-0.5 text-[9px] font-medium tracking-tight text-white/85",
+            "flex items-center gap-0.5 text-[9px] font-medium tracking-tight text-violet-950/85",
             selected ? "opacity-75" : "opacity-0 transition-opacity group-hover/zoom:opacity-60",
           )}
         >

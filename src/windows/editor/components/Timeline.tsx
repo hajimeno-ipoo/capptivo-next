@@ -20,7 +20,7 @@ import {
   Undo2,
   ZoomIn,
 } from "lucide-react";
-import { computeTrimGaps } from "@/engine";
+import { computeTrimGaps, perspectiveEditPreviewTime } from "@/engine";
 
 import {
   DropdownMenu,
@@ -46,7 +46,7 @@ import { SpeedTimelineBlock } from "./SpeedTimelineBlock";
 import { TextTimelineBlock } from "./TextTimelineBlock";
 
 /** Per-preset hint copy shown in the ratio dropdown ("YouTube / Desktop", …). */
-const RATIO_HINT_KEY: Record<AspectRatioPresetId, TranslationKey> = {
+export const RATIO_HINT_KEY: Record<AspectRatioPresetId, TranslationKey> = {
   recording: "ratio.hint.recording",
   "16:9": "ratio.hint.16:9",
   "16:10": "ratio.hint.16:10",
@@ -561,6 +561,12 @@ export function Timeline({
 
       if (!active) return;
 
+      const seekClipStart = (start: number) => {
+        const { isPlaying, setPlaying } = useEditorStore.getState();
+        if (isPlaying) setPlaying(false);
+        onSeek(start);
+      };
+
       if (active.kind === "gap-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
         selectGap(active.gapIndex);
         endTimelineEdit();
@@ -568,6 +574,8 @@ export function Timeline({
       }
       if (active.kind === "zoom-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
         selectZoomFragment(active.fragmentId);
+        const fragment = zoomFragments.find((candidate) => candidate.id === active.fragmentId);
+        if (fragment) seekClipStart(fragment.start);
         endTimelineEdit();
         return;
       }
@@ -576,21 +584,29 @@ export function Timeline({
         Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX
       ) {
         selectPerspectiveFragment(active.fragmentId);
+        const fragment = perspectiveFragments.find((candidate) => candidate.id === active.fragmentId);
+        if (fragment) seekClipStart(perspectiveEditPreviewTime(fragment));
         endTimelineEdit();
         return;
       }
       if (active.kind === "overlay-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
         selectBlurRegion(active.regionId);
+        const region = blurRegions.find((candidate) => candidate.id === active.regionId);
+        if (region) seekClipStart(region.start);
         endTimelineEdit();
         return;
       }
       if (active.kind === "speed-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
         selectSpeedRange(active.rangeId);
+        const range = speedRanges.find((candidate) => candidate.id === active.rangeId);
+        if (range) seekClipStart(range.start);
         endTimelineEdit();
         return;
       }
       if (active.kind === "text-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
         selectTextClip(active.clipId);
+        const clip = textClips.find((candidate) => candidate.id === active.clipId);
+        if (clip) seekClipStart(clip.start);
         endTimelineEdit();
         return;
       }
@@ -598,6 +614,12 @@ export function Timeline({
     },
     [
       endTimelineEdit,
+      onSeek,
+      zoomFragments,
+      perspectiveFragments,
+      blurRegions,
+      speedRanges,
+      textClips,
       selectBlurRegion,
       selectGap,
       selectPerspectiveFragment,

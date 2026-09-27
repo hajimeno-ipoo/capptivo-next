@@ -132,7 +132,9 @@ export async function exportProject(
   const resolved = resolveExportParams(settings, stage.width, stage.height);
   const fileExt = resolved.ext;
   const base =
-    (project.title ?? "recording").replace(/[^\w.-]+/g, "-") || "recording";
+    (project.title ?? "recording")
+      .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+      .replace(/^[._-]+|[._-]+$/g, "") || "recording";
   const suggestedName = `${base}.${fileExt}`;
 
   store.setExporting(true);

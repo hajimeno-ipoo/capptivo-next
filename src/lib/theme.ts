@@ -4,7 +4,7 @@ export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 export const THEME_MODES: readonly ThemeMode[] = ["light", "dark", "system"];
-export const DEFAULT_THEME: ThemeMode = "system";
+export const DEFAULT_THEME: ThemeMode = "light";
 
 export const THEME_STORAGE_KEY = "capptivo.theme";
 
@@ -30,7 +30,7 @@ export function storeTheme(mode: ThemeMode): void {
 }
 
 export function systemTheme(): ResolvedTheme {
-  if (typeof window === "undefined" || !window.matchMedia) return "dark";
+  if (typeof window === "undefined" || !window.matchMedia) return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 

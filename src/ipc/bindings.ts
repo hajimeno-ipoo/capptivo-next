@@ -173,13 +173,17 @@ export const commands = {
 
   /** Persist a custom background into the global app-data library. */
   saveCustomBackground: (bytes: Uint8Array, ext: string) =>
-    invoke<{ id: string; fileName: string }>("save_custom_background", bytes, {
+    invoke<{ id: string; fileName: string; isMacWallpaper: boolean }>("save_custom_background", bytes, {
       headers: { "x-background-ext": ext },
     }),
   listCustomBackgrounds: () =>
-    invoke<{ id: string; fileName: string }[]>("list_custom_backgrounds"),
+    invoke<{ id: string; fileName: string; isMacWallpaper: boolean }[]>("list_custom_backgrounds"),
   deleteCustomBackground: (id: string) =>
     invoke<void>("delete_custom_background", { id }),
+  listMacWallpapers: () =>
+    invoke<{ id: string; name: string; thumbnailDataUrl: string | null }[]>("list_mac_wallpapers"),
+  importMacWallpaper: (id: string) =>
+    invoke<{ id: string; fileName: string; isMacWallpaper: boolean }>("import_mac_wallpaper", { id }),
 
   // Save path: use `@tauri-apps/plugin-dialog` `save()` — never a blocking Rust picker.
   beginExport: (path: string) => invoke<number>("begin_export", { path }),

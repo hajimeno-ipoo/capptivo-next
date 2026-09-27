@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Arabic. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ar: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "تسجيل بلا عنوان",
   "app.loading": "جارٍ التحميل…",
+
+  "editor.mode.canvas": "لوحة العمل",
+  "editor.mode.time": "تحرير الزمن",
+  "editor.timeline.open": "فتح الخط الزمني",
+  "editor.timeline.close": "إغلاق الخط الزمني",
+  "editor.imageEdit": "تحرير الصورة",
+  "editor.tools": "أدوات التحرير",
 
   "titleBar.export": "تصدير",
 
@@ -111,11 +118,18 @@ export const ar: Record<TranslationKey, string> = {
   "bg.image": "صورة",
   "bg.gradient": "تدرج",
   "bg.color": "لون",
+  "bg.macWallpaper": "خلفيات Mac",
+  "bg.macWallpaper.empty": "لا تتوفر خلفيات Mac مثبتة.",
+  "bg.macWallpaper.loadFailed": "تعذّر تحميل خلفيات Mac.",
+  "bg.macWallpaper.importFailed": "تعذّر استخدام خلفية Mac هذه.",
   "look.custom": "مخصص",
   "look.uploadImage": "رفع صورة",
   "look.deleteImage": "حذف الصورة",
   "look.start": "البداية",
   "look.end": "النهاية",
+  "clip.duration": "المدة",
+  "clip.fragment.label": "مقطع",
+  "clip.fragment.placeholder": "اختر مقطعًا",
   "look.angle": "الزاوية",
   "look.padding": "هامش الفيديو (بكسل)",
   "look.padding.hint":
@@ -243,6 +257,7 @@ export const ar: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "تموج",
   "cursor.clickEffect.spotlight": "إضاءة",
   "cursor.clickEffect.echo": "صدى",
+  "cursor.clickEffect.flash": "وميض",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -318,9 +333,9 @@ export const ar: Record<TranslationKey, string> = {
   "updater.install": "تحديث",
   "updater.dismiss": "إغلاق",
   "updater.installing": "جارٍ تثبيت التحديث…",
-  "updater.installing.detail": "جارٍ تنزيل وتثبيت الإصدار {version}. ستُعاد تشغيل Capptivo.",
+  "updater.installing.detail": "جارٍ تنزيل وتثبيت الإصدار {version}. ستُعاد تشغيل Capptivo_Next.",
   "updater.checking": "جارٍ التحقق من التحديثات…",
-  "updater.upToDate": "Capptivo محدّث.",
+  "updater.upToDate": "Capptivo_Next محدّث.",
   "updater.busyRecording": "أنهِ أو أوقف التسجيل الحالي قبل التحديث.",
   "updater.error": "تعذّر التحقق من التحديثات.",
 
@@ -355,10 +370,16 @@ export const ar: Record<TranslationKey, string> = {
 
   "recorder.drag": "سحب",
   "recorder.recordings": "التسجيلات",
+  "recorder.library": "المكتبة",
   "recorder.close": "إغلاق",
   "recorder.record": "تسجيل",
+  "recorder.screenRecording": "تسجيل الشاشة",
   "recorder.screenshot": "لقطة شاشة",
+  "recorder.takeScreenshot": "التقاط",
   "recorder.captureKind": "نوع الالتقاط",
+  "recorder.captureTarget": "هدف الالتقاط",
+  "recorder.inputs": "المدخلات",
+  "recorder.mode.windowScreenshotNote": "لقطة الشاشة لنافذة واحدة لا تتضمن الكاميرا أو التعليقات التوضيحية المباشرة.",
   "recorder.mode.display": "شاشة",
   "recorder.mode.window": "نافذة",
   "recorder.mode.area": "منطقة",
@@ -372,9 +393,9 @@ export const ar: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "وصّل iPhone أو iPad بكابل، افتح القفل واضغط Trust.",
   "recorder.error.screenPermission":
-    "اسمح لـ Capptivo من إعدادات النظام → الخصوصية والأمان → تسجيل الشاشة، ثم أغلق التطبيق وأعد فتحه.",
+    "اسمح لـ Capptivo_Next من إعدادات النظام → الخصوصية والأمان → تسجيل الشاشة، ثم أغلق التطبيق وأعد فتحه.",
   "recorder.error.cameraPermission":
-    "اسمح لـ Capptivo من إعدادات النظام → الخصوصية والأمان → الكاميرا لتسجيل جهاز.",
+    "اسمح لـ Capptivo_Next من إعدادات النظام → الخصوصية والأمان → الكاميرا لتسجيل جهاز.",
   "recorder.error.noDevice": "وصّل iPhone أو iPad بكابل، ثم اخترْه.",
   "recorder.error.noArea": "اسحب أولاً لتحديد منطقة.",
   "recorder.error.noSource": "اختر شاشة أو نافذة أولاً.",
@@ -389,6 +410,7 @@ export const ar: Record<TranslationKey, string> = {
   "recorder.audio": "الصوت",
   "recorder.audio.off": "بدون صوت",
   "recorder.audio.system": "صوت النظام",
+  "recorder.audio.device": "صوت الجهاز",
   "recorder.audio.none": "بدون صوت النظام",
   "recorder.sources.displays": "الشاشات",
   "recorder.sources.windows": "النوافذ",

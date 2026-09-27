@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Korean. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ko: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "제목 없는 녹화",
   "app.loading": "로드 중…",
+
+  "editor.mode.canvas": "캔버스",
+  "editor.mode.time": "시간 편집",
+  "editor.timeline.open": "타임라인 열기",
+  "editor.timeline.close": "타임라인 닫기",
+  "editor.imageEdit": "이미지 편집",
+  "editor.tools": "편집 도구",
 
   "titleBar.export": "내보내기",
 
@@ -110,11 +117,18 @@ export const ko: Record<TranslationKey, string> = {
   "bg.image": "이미지",
   "bg.gradient": "그라데이션",
   "bg.color": "색상",
+  "bg.macWallpaper": "Mac 배경화면",
+  "bg.macWallpaper.empty": "사용 가능한 설치된 Mac 배경화면이 없습니다.",
+  "bg.macWallpaper.loadFailed": "Mac 배경화면을 불러오지 못했습니다.",
+  "bg.macWallpaper.importFailed": "이 Mac 배경화면을 사용할 수 없습니다.",
   "look.custom": "사용자 지정",
   "look.uploadImage": "이미지 업로드",
   "look.deleteImage": "이미지 삭제",
   "look.start": "시작",
   "look.end": "끝",
+  "clip.duration": "길이",
+  "clip.fragment.label": "구간",
+  "clip.fragment.placeholder": "구간 선택",
   "look.angle": "각도",
   "look.padding": "동영상 여백(px)",
   "look.padding.hint": "녹화가 프레임 가장자리에 닿지 않도록 두는 빈 공간.",
@@ -240,6 +254,7 @@ export const ko: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "물결",
   "cursor.clickEffect.spotlight": "스포트라이트",
   "cursor.clickEffect.echo": "에코",
+  "cursor.clickEffect.flash": "플래시",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -314,9 +329,9 @@ export const ko: Record<TranslationKey, string> = {
   "updater.install": "업데이트",
   "updater.dismiss": "닫기",
   "updater.installing": "업데이트 설치 중…",
-  "updater.installing.detail": "버전 {version}을(를) 다운로드하고 설치합니다. Capptivo가 다시 시작됩니다.",
+  "updater.installing.detail": "버전 {version}을(를) 다운로드하고 설치합니다. Capptivo_Next가 다시 시작됩니다.",
   "updater.checking": "업데이트 확인 중…",
-  "updater.upToDate": "Capptivo가 최신 상태입니다.",
+  "updater.upToDate": "Capptivo_Next가 최신 상태입니다.",
   "updater.busyRecording": "업데이트하기 전에 현재 녹화를 끝내거나 중지하세요.",
   "updater.error": "업데이트를 확인할 수 없습니다.",
 
@@ -351,10 +366,16 @@ export const ko: Record<TranslationKey, string> = {
 
   "recorder.drag": "드래그",
   "recorder.recordings": "녹화",
+  "recorder.library": "라이브러리",
   "recorder.close": "닫기",
   "recorder.record": "녹화",
+  "recorder.screenRecording": "화면 녹화",
   "recorder.screenshot": "스크린샷",
+  "recorder.takeScreenshot": "캡처",
   "recorder.captureKind": "캡처 종류",
+  "recorder.captureTarget": "캡처 대상",
+  "recorder.inputs": "입력",
+  "recorder.mode.windowScreenshotNote": "창 하나만 캡처한 스크린샷에는 카메라와 실시간 주석이 포함되지 않습니다.",
   "recorder.mode.display": "디스플레이",
   "recorder.mode.window": "창",
   "recorder.mode.area": "영역",
@@ -368,9 +389,9 @@ export const ko: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "케이블로 iPhone 또는 iPad를 연결하고, 잠금을 해제한 뒤 신뢰함을 탭하세요.",
   "recorder.error.screenPermission":
-    "시스템 설정 → 개인정보 보호 및 보안 → 화면 기록에서 Capptivo를 허용한 다음, 앱을 종료하고 다시 여세요.",
+    "시스템 설정 → 개인정보 보호 및 보안 → 화면 기록에서 Capptivo_Next를 허용한 다음, 앱을 종료하고 다시 여세요.",
   "recorder.error.cameraPermission":
-    "기기를 녹화하려면 시스템 설정 → 개인정보 보호 및 보안 → 카메라에서 Capptivo를 허용하세요.",
+    "기기를 녹화하려면 시스템 설정 → 개인정보 보호 및 보안 → 카메라에서 Capptivo_Next를 허용하세요.",
   "recorder.error.noDevice":
     "케이블로 iPhone 또는 iPad를 연결한 다음 선택하세요.",
   "recorder.error.noArea": "먼저 드래그하여 영역을 선택하세요.",
@@ -386,6 +407,7 @@ export const ko: Record<TranslationKey, string> = {
   "recorder.audio": "오디오",
   "recorder.audio.off": "오디오 없음",
   "recorder.audio.system": "시스템 오디오",
+  "recorder.audio.device": "기기 오디오",
   "recorder.audio.none": "시스템 오디오 없음",
   "recorder.sources.displays": "디스플레이",
   "recorder.sources.windows": "창",

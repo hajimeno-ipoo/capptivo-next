@@ -27,6 +27,7 @@ import {
   type ExportContainer,
   type ExportEncoding,
   type ExportFps,
+  type ExportResolution,
   type ExportSettings,
 } from "../export/exportSettings";
 import {
@@ -55,6 +56,7 @@ type ExportSettingsDialogProps = {
 
 const ENCODINGS: ExportEncoding[] = ["fast", "balanced", "quality"];
 const FPS_OPTIONS: ExportFps[] = [24, 30, 60];
+const RESOLUTIONS: ExportResolution[] = ["1080p", "4k"];
 const CONTAINERS: ExportContainer[] = ["mp4", "webm"];
 const AUDIO_ENHANCE_OPTIONS: { id: ExportAudioEnhance; labelKey: TranslationKey }[] = [
   { id: "off", labelKey: "export.enhanceVoice.off" },
@@ -80,10 +82,10 @@ export function ExportSettingsDialog({
     if (open) setSettings(loadLastExportSettings());
   }, [open]);
 
-  // Output size is fixed by the timeline's ratio picker; only the format cap varies.
+  // Output aspect follows the timeline; video resolution is selected here.
   const dims = useMemo(
-    () => exportDimensionsFor(stageWidth, stageHeight, settings.format),
-    [stageWidth, stageHeight, settings.format],
+    () => exportDimensionsFor(stageWidth, stageHeight, settings.format, settings.resolution),
+    [stageWidth, stageHeight, settings.format, settings.resolution],
   );
 
   const patch = <K extends keyof ExportSettings>(key: K, value: ExportSettings[K]) => {
@@ -127,14 +129,24 @@ export function ExportSettingsDialog({
               onClick={() => patch("format", "gif")}
             />
           </div>
-          {/* Size follows the timeline's aspect-ratio picker — no separate setting. */}
-          <p className="text-xs text-muted-foreground">
+          {isGif ? <p className="text-xs text-muted-foreground">
             {t("export.size")}{" "}
             <span className="tabular-nums text-foreground">
               {dims.width} × {dims.height}
             </span>
-          </p>
+          </p> : null}
         </div>
+
+        {!isGif ? <Field label={t("export.size")}>
+          <PillGroup
+            value={settings.resolution}
+            onChange={(v) => patch("resolution", v as ExportResolution)}
+            options={RESOLUTIONS.map((id) => ({ id, label: id === "4k" ? "4K" : "1080p" }))}
+          />
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {dims.width} × {dims.height}
+          </p>
+        </Field> : null}
 
         <Field label={isGif ? t("export.gifQuality") : t("export.encoding")}>
           <PillGroup

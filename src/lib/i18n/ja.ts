@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Japanese. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ja: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "無題の録画",
   "app.loading": "読み込み中…",
+
+  "editor.mode.canvas": "キャンバス",
+  "editor.mode.time": "時間編集",
+  "editor.timeline.open": "時間軸を開く",
+  "editor.timeline.close": "時間軸を閉じる",
+  "editor.imageEdit": "画像を編集",
+  "editor.tools": "編集道具",
 
   "titleBar.export": "書き出し",
 
@@ -110,11 +117,18 @@ export const ja: Record<TranslationKey, string> = {
   "bg.image": "画像",
   "bg.gradient": "グラデーション",
   "bg.color": "色",
+  "bg.macWallpaper": "Mac壁紙",
+  "bg.macWallpaper.empty": "利用できるMac壁紙はありません。",
+  "bg.macWallpaper.loadFailed": "Mac壁紙の読み込みに失敗しました。",
+  "bg.macWallpaper.importFailed": "このMac壁紙を背景に設定できませんでした。",
   "look.custom": "カスタム",
   "look.uploadImage": "画像をアップロード",
   "look.deleteImage": "画像を削除",
   "look.start": "開始",
   "look.end": "終了",
+  "clip.duration": "長さ",
+  "clip.fragment.label": "断片",
+  "clip.fragment.placeholder": "断片を選択",
   "look.angle": "角度",
   "look.padding": "動画の余白（px）",
   "look.padding.hint": "録画がフレーム端に触れないよう周囲に空けるスペース。",
@@ -243,6 +257,7 @@ export const ja: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "リップル",
   "cursor.clickEffect.spotlight": "スポットライト",
   "cursor.clickEffect.echo": "エコー",
+  "cursor.clickEffect.flash": "フラッシュ",
   "cursor.clickSound": "クリック音",
   "cursor.clickSound.hint": "録画したクリック位置で生成音を再生します。",
   "cursor.clickVolume": "クリック音の音量",
@@ -317,9 +332,9 @@ export const ja: Record<TranslationKey, string> = {
   "updater.install": "アップデート",
   "updater.dismiss": "閉じる",
   "updater.installing": "アップデートをインストール中…",
-  "updater.installing.detail": "バージョン {version} をダウンロードしてインストールしています。Capptivo が再起動します。",
+  "updater.installing.detail": "バージョン {version} をダウンロードしてインストールしています。Capptivo_Next が再起動します。",
   "updater.checking": "アップデートを確認中…",
-  "updater.upToDate": "Capptivo は最新です。",
+  "updater.upToDate": "Capptivo_Next は最新です。",
   "updater.busyRecording": "アップデートの前に録画を終了または停止してください。",
   "updater.error": "アップデートを確認できませんでした。",
 
@@ -354,10 +369,16 @@ export const ja: Record<TranslationKey, string> = {
 
   "recorder.drag": "ドラッグ",
   "recorder.recordings": "録画",
+  "recorder.library": "ライブラリ",
   "recorder.close": "閉じる",
   "recorder.record": "録画",
-  "recorder.screenshot": "スクショ",
+  "recorder.screenRecording": "画面収録",
+  "recorder.screenshot": "スクリーンショット",
+  "recorder.takeScreenshot": "撮影",
   "recorder.captureKind": "撮影の種類",
+  "recorder.captureTarget": "撮影対象",
+  "recorder.inputs": "入力",
+  "recorder.mode.windowScreenshotNote": "ウィンドウ単独のスクショにはカメラとライブ注釈が入りません。",
   "recorder.mode.display": "ディスプレイ",
   "recorder.mode.window": "ウィンドウ",
   "recorder.mode.area": "範囲",
@@ -371,9 +392,9 @@ export const ja: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "ケーブルで iPhone または iPad を接続し、ロック解除して「信頼」をタップしてください。",
   "recorder.error.screenPermission":
-    "システム設定 → プライバシーとセキュリティ → 画面収録 で Capptivo を許可し、アプリを終了して再度開いてください。",
+    "システム設定 → プライバシーとセキュリティ → 画面収録 で Capptivo_Next を許可し、アプリを終了して再度開いてください。",
   "recorder.error.cameraPermission":
-    "デバイスを録画するには、システム設定 → プライバシーとセキュリティ → カメラ で Capptivo を許可してください。",
+    "デバイスを録画するには、システム設定 → プライバシーとセキュリティ → カメラ で Capptivo_Next を許可してください。",
   "recorder.error.noDevice":
     "ケーブルで iPhone または iPad を接続し、選択してください。",
   "recorder.error.noArea": "先にドラッグして範囲を選択してください。",
@@ -389,6 +410,7 @@ export const ja: Record<TranslationKey, string> = {
   "recorder.audio": "オーディオ",
   "recorder.audio.off": "オーディオなし",
   "recorder.audio.system": "システム音声",
+  "recorder.audio.device": "デバイス音声",
   "recorder.audio.none": "システム音声なし",
   "recorder.sources.displays": "ディスプレイ",
   "recorder.sources.windows": "ウィンドウ",

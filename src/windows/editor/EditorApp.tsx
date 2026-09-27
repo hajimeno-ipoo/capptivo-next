@@ -1,18 +1,20 @@
 /**
- * Editor root — icon rail + Appearance/Zoom inspector above the preview, with a
- * full-width timeline docked across the bottom. Capptivo logo swaps this shell
- * to the in-window recordings library (no second window).
+ * Editor root — tool rail and contextual inspector beside a large preview.
+ * Time editing opens the timeline below, and Back opens the in-window library.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, RectangleHorizontal, Redo2, Undo2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save } from "@tauri-apps/plugin-dialog";
 import { totalKeptDuration } from "@/engine";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/settings";
+import { cn } from "@/lib/utils";
 import { commands } from "@/ipc/bindings";
 import { useEditorStore } from "./store";
 import { CaptionsPanel } from "./components/CaptionsPanel";
@@ -22,18 +24,19 @@ import { CursorPanel } from "./components/CursorPanel";
 import { ExportProgressOverlay } from "./components/ExportProgressOverlay";
 import { ExportSettingsDialog } from "./components/ExportSettingsDialog";
 import { EditorTitleBar } from "./components/EditorTitleBar";
-import { InspectorChrome } from "./components/InspectorChrome";
-import { LookPanel } from "./components/LookPanel";
+import { InspectorChrome, type EditorToolId } from "./components/InspectorChrome";
+import { LookPanel, type LookSection } from "./components/LookPanel";
 import { PreviewStage } from "./components/PreviewStage";
 import { RecordingsLibrary } from "./components/RecordingsLibrary";
 import { ScreenshotToolsPanel } from "./components/ScreenshotToolsPanel";
-import { Timeline } from "./components/Timeline";
+import { RATIO_HINT_KEY, Timeline } from "./components/Timeline";
 import { ZoomPanel } from "./components/ZoomPanel";
 import type { ExportSettings } from "./export/exportSettings";
 import { exportProject } from "./export/exportVideo";
 import { ExportSink } from "./export/exportSink";
 import { useStageDimensions } from "./lib/useStageDimensions";
 import { presentableVideoTime } from "./lib/presentableVideoTime";
+import { ASPECT_RATIO_PRESETS } from "./lib/composition";
 import { dismissEditorSplash } from "./splash";
 import { showError } from "@/lib/toast";
 import { consumeGpuReloadedBanner } from "./render/gpuLifecycle";
@@ -70,7 +73,19 @@ export function EditorApp() {
   const project = useEditorStore((s) => s.project);
   const projectId = useEditorStore((s) => s.projectId);
   const screenshotId = useEditorStore((s) => s.screenshotId);
+  const aspectRatioPresetId = useEditorStore((s) => s.aspectRatioPresetId);
+  const backgroundType = useEditorStore((s) => s.backgroundType);
+  const historyPast = useEditorStore((s) => s.historyPast);
+  const historyFuture = useEditorStore((s) => s.historyFuture);
+  const selectedPerspectiveFragmentId = useEditorStore((s) => s.selectedPerspectiveFragmentId);
+  const selectedBlurRegionId = useEditorStore((s) => s.selectedBlurRegionId);
+  const selectedSpeedRangeId = useEditorStore((s) => s.selectedSpeedRangeId);
+  const selectedTextClipId = useEditorStore((s) => s.selectedTextClipId);
   const stage = useStageDimensions();
+  const [activeTool, setActiveTool] = useState<EditorToolId>("background");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [canvasHost, setCanvasHost] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [screenshotExportOpen, setScreenshotExportOpen] = useState(false);
   const [screenshotFormat, setScreenshotFormat] = useState<"png" | "jpeg">("png");
@@ -78,6 +93,36 @@ export function EditorApp() {
   const [shell, setShell] = useState<"editor" | "library">(initialShell);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const screenshotFrameRef = useRef<(() => HTMLCanvasElement | null) | null>(null);
+
+  const chooseTool = useCallback((tool: EditorToolId) => {
+    if (activeTool === tool && panelOpen) {
+      setPanelOpen(false);
+      return;
+    }
+    setActiveTool(tool);
+    setPanelOpen(true);
+    setInspectorPanel(tool === "image" || tool === "cursor" || tool === "camera"
+      || tool === "zoom" || tool === "captions" || tool === "config" ? tool : "look");
+  }, [activeTool, panelOpen, setInspectorPanel]);
+
+  useEffect(() => {
+    if (inspectorPanel === "zoom" || inspectorPanel === "image" || inspectorPanel === "cursor"
+      || inspectorPanel === "camera" || inspectorPanel === "captions" || inspectorPanel === "config") {
+      setActiveTool(inspectorPanel);
+      setPanelOpen(true);
+    }
+  }, [inspectorPanel]);
+
+  useEffect(() => {
+    if (screenshotId) return;
+    const selectedTool = selectedPerspectiveFragmentId ? "perspective"
+      : selectedBlurRegionId ? "mask" : selectedSpeedRangeId ? "speed"
+        : selectedTextClipId ? "text" : selectedZoomFragmentId ? "zoom" : null;
+    if (!selectedTool) return;
+    setActiveTool(selectedTool);
+    setPanelOpen(true);
+  }, [screenshotId, selectedPerspectiveFragmentId, selectedBlurRegionId,
+    selectedSpeedRangeId, selectedTextClipId, selectedZoomFragmentId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -197,6 +242,9 @@ export function EditorApp() {
   const openProject = useCallback(
     async (id: string) => {
       await init(id);
+      setTimelineOpen(false);
+      setPanelOpen(false);
+      setActiveTool("background");
       history.replaceState(null, "", `?project=${encodeURIComponent(id)}`);
       setShell("editor");
     },
@@ -206,6 +254,9 @@ export function EditorApp() {
   const openScreenshot = useCallback(
     async (id: string) => {
       await init(id, true);
+      setTimelineOpen(false);
+      setPanelOpen(false);
+      setActiveTool("background");
       history.replaceState(null, "", `?screenshot=${encodeURIComponent(id)}`);
       setShell("editor");
     },
@@ -285,12 +336,18 @@ export function EditorApp() {
     useEditorStore.getState().setCurrentTime(time);
   };
 
+  const lookSection: LookSection = activeTool === "background" || activeTool === "crop"
+    || activeTool === "mask" || activeTool === "text" || activeTool === "speed"
+    || activeTool === "perspective" ? activeTool : "background";
+  const lookActive = panelOpen && inspectorPanel === "look";
+  const activeRatio = ASPECT_RATIO_PRESETS.find((preset) => preset.id === aspectRatioPresetId);
+
   if (shell === "library") {
     return (
       <TooltipProvider delayDuration={200}>
         <div className="flex h-screen min-h-0 flex-col bg-background text-foreground">
           <EditorTitleBar
-            title={t("recorder.recordings")}
+            title={t("recorder.library")}
             onBack={
               ready && !error && project
                 ? () => setShell("editor")
@@ -316,6 +373,7 @@ export function EditorApp() {
       <div className="flex h-screen min-h-0 flex-col bg-background text-foreground">
         <EditorTitleBar
           title={windowTitle}
+          onBack={openRecordings}
           renameSeed={project?.title?.trim() ?? ""}
           onRename={renameTitle}
           exportError={exportError}
@@ -325,29 +383,74 @@ export function EditorApp() {
           showPresets
           onExport={() => screenshotId ? setScreenshotExportOpen(true) : setExportOpen(true)}
         />
-        {/* Top row: inspector rail + preview share the height above the timeline. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card/70 px-4 py-2 pl-24">
+          <div className="flex min-w-0 items-center gap-2">
+            {!screenshotId && <div className="inline-flex rounded-xl border border-border bg-muted p-1" role="group" aria-label={t("editor.mode.time")}>
+              <button type="button" onClick={() => setTimelineOpen(false)} aria-pressed={!timelineOpen}
+                className={`rounded-lg px-4 py-1.5 text-xs font-semibold ${!timelineOpen ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                {t("editor.mode.canvas")}
+              </button>
+              <button type="button" onClick={() => setTimelineOpen(true)} aria-pressed={timelineOpen}
+                className={`rounded-lg px-4 py-1.5 text-xs font-semibold ${timelineOpen ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                {t("editor.mode.time")}
+              </button>
+            </div>}
+            {screenshotId && <span className="text-xs font-semibold text-muted-foreground">{t("editor.imageEdit")}</span>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" aria-label={t("ratio.label")}>
+                  <RectangleHorizontal className="size-4" />
+                  {aspectRatioPresetId === "recording" ? t("ratio.match") : activeRatio?.label}
+                  <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {ASPECT_RATIO_PRESETS.filter((preset) => preset.id !== "recording" || backgroundType !== "image").map((preset) => (
+                  <DropdownMenuItem key={preset.id} onClick={() => useEditorStore.getState().setAspectRatioPreset(preset.id)}
+                    className={cn("flex items-center gap-2", aspectRatioPresetId === preset.id && "bg-accent text-accent-foreground")}>
+                    <span className="w-10 shrink-0 font-mono text-xs font-medium">
+                      {preset.id === "recording" ? t("ratio.match") : preset.label}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {t(RATIO_HINT_KEY[preset.id])}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button type="button" variant="outline" size="icon" className="size-8" aria-label={t("timeline.undo")}
+              disabled={historyPast.length === 0} onClick={() => useEditorStore.getState().undo()}><Undo2 className="size-4" /></Button>
+            <Button type="button" variant="outline" size="icon" className="size-8" aria-label={t("timeline.redo")}
+              disabled={historyFuture.length === 0} onClick={() => useEditorStore.getState().redo()}><Redo2 className="size-4" /></Button>
+          </div>
+        </div>
         <div className="flex min-h-0 flex-1">
           <InspectorChrome
-            activePanel={inspectorPanel}
-            onPanelChange={setInspectorPanel}
+            activeTool={activeTool}
+            onToolChange={chooseTool}
+            panelOpen={panelOpen}
+            onPanelOpenChange={setPanelOpen}
             hasFaceCam={!!cameraUrl}
             isScreenshot={!!screenshotId}
-            onOpenRecordings={openRecordings}
           >
-            <LookPanel visible={inspectorPanel === "look"} />
-            {screenshotId && <ScreenshotToolsPanel visible={inspectorPanel === "image"} />}
-            <CursorPanel visible={inspectorPanel === "cursor"} />
-            <CameraPanel visible={inspectorPanel === "camera"} />
+            <LookPanel visible={lookActive} section={lookSection} canvasHost={lookActive ? canvasHost : null} onSeek={seek} />
+            {screenshotId && <ScreenshotToolsPanel visible={panelOpen && activeTool === "image"} canvasHost={canvasHost} />}
+            <CursorPanel visible={panelOpen && inspectorPanel === "cursor"} />
+            <CameraPanel visible={panelOpen && inspectorPanel === "camera"} />
             <ZoomPanel
-              visible={inspectorPanel === "zoom"}
+              visible={panelOpen && inspectorPanel === "zoom"}
+              canvasHost={panelOpen && activeTool === "zoom" ? canvasHost : null}
               recordingMetadata={recordingMetadata}
               zoomFragments={zoomFragments}
               selectedZoomFragmentId={selectedZoomFragmentId}
               onSelectZoomFragmentId={selectZoomFragment}
+              onSeek={seek}
               updateSelectedZoomFragment={updateSelectedZoomFragment}
             />
-            <CaptionsPanel visible={inspectorPanel === "captions"} />
-            <ConfigPanel visible={inspectorPanel === "config"} />
+            <CaptionsPanel visible={panelOpen && inspectorPanel === "captions"} />
+            <ConfigPanel visible={panelOpen && inspectorPanel === "config"} />
           </InspectorChrome>
 
           <div className="flex min-w-0 flex-1 flex-col">
@@ -359,15 +462,14 @@ export function EditorApp() {
                   {t("app.loading")}
                 </p>
               ) : (
-                <PreviewStage videoRef={videoRef} screenshotFrameRef={screenshotFrameRef} />
+                <PreviewStage videoRef={videoRef} screenshotFrameRef={screenshotFrameRef} onCanvasHost={setCanvasHost} />
               )}
             </main>
           </div>
         </div>
 
-        {/* Full-width timeline docked across the bottom of the app. */}
-        {ready && !error && (
-          <div className="shrink-0">
+        {ready && !error && !screenshotId && (
+          <div className={timelineOpen ? "max-h-[38vh] min-h-[220px] shrink-0 overflow-y-auto" : "hidden"}>
             <Timeline onSeek={seek} videoRef={videoRef} />
           </div>
         )}

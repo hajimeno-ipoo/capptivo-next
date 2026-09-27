@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   getCompositionLayout,
   getFaceCamZoomPresenceMinScale,
@@ -34,6 +35,7 @@ import { useStageDimensions } from "../lib/useStageDimensions";
 import { cornerHandleOverlayStyle, CROP_HANDLE_SIZE, getHandleCursor } from "../lib/cropHandles";
 import { formatTimelineTime } from "../lib/timelineMath";
 import { useEditorStore } from "../store";
+import { ClipTimingDisplay } from "./ClipTimingDisplay";
 import { InspectorVideoPreview } from "./InspectorVideoPreview";
 
 type NormRect = { x: number; y: number; width: number; height: number };
@@ -57,19 +59,23 @@ type Interaction =
 
 export type ZoomPanelProps = {
   visible: boolean;
+  canvasHost?: HTMLDivElement | null;
   recordingMetadata: RecordingMetadata | null;
   zoomFragments: ZoomFragment[];
   selectedZoomFragmentId: string | null;
   onSelectZoomFragmentId: (id: string) => void;
+  onSeek: (time: number) => void;
   updateSelectedZoomFragment: (updater: (current: ZoomFragment) => ZoomFragment) => void;
 };
 
 export function ZoomPanel({
   visible,
+  canvasHost,
   recordingMetadata,
   zoomFragments,
   selectedZoomFragmentId,
   onSelectZoomFragmentId,
+  onSeek,
   updateSelectedZoomFragment,
 }: ZoomPanelProps) {
   const { t } = useI18n();
@@ -104,6 +110,15 @@ export function ZoomPanel({
       ),
     [zoomFragments],
   );
+
+  const handleSelectZoomFragment = (id: string) => {
+    const fragment = zoomFragments.find((candidate) => candidate.id === id);
+    if (!fragment) return;
+    const { isPlaying, setPlaying } = useEditorStore.getState();
+    if (isPlaying) setPlaying(false);
+    onSelectZoomFragmentId(id);
+    onSeek(fragment.start);
+  };
 
   const selectedZoomFixedRect = useMemo(
     () =>
@@ -352,14 +367,16 @@ export function ZoomPanel({
                 ? selectedZoomFragmentId
                 : undefined
             }
-            onValueChange={onSelectZoomFragmentId}
+            onValueChange={handleSelectZoomFragment}
           >
             <SelectTrigger id="inspector-zoom-fragment" className="h-9 w-full">
               <SelectValue placeholder={t("zoom.fragment.placeholder")} />
             </SelectTrigger>
             <SelectContent>
               {sortedZoomFragments.map((f, index) => (
-                <SelectItem key={f.id} value={f.id}>
+                <SelectItem key={f.id} value={f.id}
+                  onPointerUp={() => { if (selectedZoomFragmentId === f.id) handleSelectZoomFragment(f.id); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" && selectedZoomFragmentId === f.id) handleSelectZoomFragment(f.id); }}>
                   {`${index + 1}. ${formatTimelineTime(f.start)} – ${formatTimelineTime(f.end)}`}
                   {` · ${f.mode === "follow-cursor" ? t("zoom.tag.follow") : t("zoom.tag.fixed")}`}
                 </SelectItem>
@@ -371,6 +388,7 @@ export function ZoomPanel({
 
       {selectedZoomFragment && (
         <div className="space-y-4 pt-1">
+          <ClipTimingDisplay start={selectedZoomFragment.start} end={selectedZoomFragment.end} />
           {recordingMetadata && recordingMetadata.cursorSamples.length > 0 ? (
             <div className="space-y-2">
               <Label className="text-muted-foreground">{t("zoom.position")}</Label>
@@ -484,9 +502,9 @@ export function ZoomPanel({
                 9999px "outside" dim must live inside overflow-hidden (see screen crop) or it
                 covers the whole inspector. Handles sit on a sibling so they stay unclipped.
               */}
-              <div
+              {canvasHost && createPortal(<div
                 ref={stageRef}
-                className="relative w-full select-none"
+                className="pointer-events-auto absolute inset-0 select-none"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -578,7 +596,7 @@ export function ZoomPanel({
                     />
                   ))}
                 </div>
-              </div>
+              </div>, canvasHost)}
             </div>
           )}
 

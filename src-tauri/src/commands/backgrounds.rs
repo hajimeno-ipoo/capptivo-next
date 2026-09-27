@@ -2,6 +2,7 @@
 
 use crate::backgrounds::{self, CustomBackground};
 use crate::error::{AppError, AppResult};
+use crate::mac_wallpapers::{self, MacWallpaper};
 use crate::state::AppState;
 use tauri::State;
 
@@ -32,7 +33,12 @@ pub fn save_custom_background(
 pub fn list_custom_backgrounds(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<CustomBackground>> {
-    backgrounds::list(state.store.app_data_dir())
+    let mut items = backgrounds::list(state.store.app_data_dir())?;
+    let wallpaper_ids = mac_wallpapers::known_import_ids(state.store.app_data_dir());
+    for item in &mut items {
+        item.is_mac_wallpaper = wallpaper_ids.contains(&item.id);
+    }
+    Ok(items)
 }
 
 #[tauri::command(async)]
@@ -41,4 +47,17 @@ pub fn delete_custom_background(
     id: String,
 ) -> AppResult<()> {
     backgrounds::delete(state.store.app_data_dir(), &id)
+}
+
+#[tauri::command(async)]
+pub fn list_mac_wallpapers(state: State<'_, AppState>) -> Vec<MacWallpaper> {
+    mac_wallpapers::list(state.store.app_data_dir())
+}
+
+#[tauri::command(async)]
+pub fn import_mac_wallpaper(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<CustomBackground> {
+    mac_wallpapers::import(state.store.app_data_dir(), &id)
 }

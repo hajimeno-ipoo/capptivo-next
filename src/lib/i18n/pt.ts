@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Portuguese. Typed against `TranslationKey` so a missing key is a compile error. */
 export const pt: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "Gravação sem título",
   "app.loading": "A carregar…",
+
+  "editor.mode.canvas": "Tela",
+  "editor.mode.time": "Edição temporal",
+  "editor.timeline.open": "Abrir linha do tempo",
+  "editor.timeline.close": "Fechar linha do tempo",
+  "editor.imageEdit": "Editar imagem",
+  "editor.tools": "Ferramentas de edição",
 
   "titleBar.export": "Exportar",
 
@@ -111,11 +118,18 @@ export const pt: Record<TranslationKey, string> = {
   "bg.image": "Imagem",
   "bg.gradient": "Gradiente",
   "bg.color": "Cor",
+  "bg.macWallpaper": "Papéis de parede do Mac",
+  "bg.macWallpaper.empty": "Não há papéis de parede do Mac instalados disponíveis.",
+  "bg.macWallpaper.loadFailed": "Não foi possível carregar os papéis de parede do Mac.",
+  "bg.macWallpaper.importFailed": "Não foi possível usar este papel de parede do Mac.",
   "look.custom": "Personalizado",
   "look.uploadImage": "Carregar imagem",
   "look.deleteImage": "Eliminar imagem",
   "look.start": "Início",
   "look.end": "Fim",
+  "clip.duration": "Duração",
+  "clip.fragment.label": "Fragmento",
+  "clip.fragment.placeholder": "Selecionar um fragmento",
   "look.angle": "Ângulo",
   "look.padding": "Margem do vídeo (px)",
   "look.padding.hint": "Espaço vazio à volta da gravação para não tocar nos limites do enquadramento.",
@@ -242,6 +256,7 @@ export const pt: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "Ondulação",
   "cursor.clickEffect.spotlight": "Holofote",
   "cursor.clickEffect.echo": "Eco",
+  "cursor.clickEffect.flash": "Flash",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -317,9 +332,9 @@ export const pt: Record<TranslationKey, string> = {
   "updater.install": "Atualizar",
   "updater.dismiss": "Fechar",
   "updater.installing": "A instalar atualização…",
-  "updater.installing.detail": "A descarregar e instalar a versão {version}. O Capptivo vai reiniciar.",
+  "updater.installing.detail": "A descarregar e instalar a versão {version}. O Capptivo_Next vai reiniciar.",
   "updater.checking": "A procurar atualizações…",
-  "updater.upToDate": "O Capptivo está atualizado.",
+  "updater.upToDate": "O Capptivo_Next está atualizado.",
   "updater.busyRecording": "Termine ou pare a gravação atual antes de atualizar.",
   "updater.error": "Não foi possível procurar atualizações.",
 
@@ -354,10 +369,16 @@ export const pt: Record<TranslationKey, string> = {
 
   "recorder.drag": "Arrastar",
   "recorder.recordings": "Gravações",
+  "recorder.library": "Biblioteca",
   "recorder.close": "Fechar",
   "recorder.record": "Gravar",
+  "recorder.screenRecording": "Gravação de tela",
   "recorder.screenshot": "Captura de tela",
+  "recorder.takeScreenshot": "Capturar",
   "recorder.captureKind": "Tipo de captura",
+  "recorder.captureTarget": "Alvo da captura",
+  "recorder.inputs": "Entradas",
+  "recorder.mode.windowScreenshotNote": "Uma captura de uma única janela não inclui a câmara nem as anotações em direto.",
   "recorder.mode.display": "Ecrã",
   "recorder.mode.window": "Janela",
   "recorder.mode.area": "Área",
@@ -371,9 +392,9 @@ export const pt: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "Ligue um iPhone ou iPad com um cabo, desbloqueie-o e toque em Confiar.",
   "recorder.error.screenPermission":
-    "Permita o Capptivo em Definições do Sistema → Privacidade e Segurança → Gravação do Ecrã e, em seguida, feche e reabra a app.",
+    "Permita o Capptivo_Next em Definições do Sistema → Privacidade e Segurança → Gravação do Ecrã e, em seguida, feche e reabra a app.",
   "recorder.error.cameraPermission":
-    "Permita o Capptivo em Definições do Sistema → Privacidade e Segurança → Câmara para gravar um dispositivo.",
+    "Permita o Capptivo_Next em Definições do Sistema → Privacidade e Segurança → Câmara para gravar um dispositivo.",
   "recorder.error.noDevice":
     "Ligue um iPhone ou iPad com um cabo e, em seguida, selecione-o.",
   "recorder.error.noArea": "Arraste primeiro para selecionar uma região.",
@@ -389,6 +410,7 @@ export const pt: Record<TranslationKey, string> = {
   "recorder.audio": "Áudio",
   "recorder.audio.off": "Sem áudio",
   "recorder.audio.system": "Áudio do sistema",
+  "recorder.audio.device": "Áudio do dispositivo",
   "recorder.audio.none": "Sem áudio do sistema",
   "recorder.sources.displays": "Ecrãs",
   "recorder.sources.windows": "Janelas",

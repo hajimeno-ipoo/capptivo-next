@@ -18,8 +18,8 @@ export function TextTimelineBlock({ clip, selected, resizable = true, onResizePo
       className={cn(
         "group/text relative flex h-full w-full min-w-[2.75rem] items-center justify-center overflow-hidden rounded-[10px] border transition-colors",
         selected
-          ? "border-violet-200 bg-violet-600/90"
-          : "border-transparent bg-violet-700/65 hover:bg-violet-600/80",
+          ? "border-rose-700 bg-pink-200"
+          : "border-transparent bg-pink-300 hover:bg-pink-200",
       )}
     >
       {resizable && (
@@ -28,7 +28,7 @@ export function TextTimelineBlock({ clip, selected, resizable = true, onResizePo
           <TimelineResizePill edge="end" hoverGroup="text" show={selected} onPointerDown={(e) => onResizePointerDown("end", e)} />
         </>
       )}
-      <div className="pointer-events-none flex min-w-0 items-center gap-1 px-2 text-[10px] font-semibold text-white">
+      <div className="pointer-events-none flex min-w-0 items-center gap-1 px-2 text-[10px] font-semibold text-rose-950">
         <Type className="size-3.5 shrink-0" aria-hidden />
         <span className="truncate">{clip.text.trim() || t("text.label")}</span>
       </div>

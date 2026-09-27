@@ -1,6 +1,6 @@
 /**
- * In-recording annotation overlay — same engine as the Capptivo extension,
- * with a vertical toolbar styled like the desktop recorder bar.
+ * Live annotation overlay with a compact tool dock and contextual properties.
+ * Drawing remains owned by the existing AnnotationEngine.
  */
 
 import {
@@ -13,7 +13,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Check,
   Circle,
   Eraser,
   GripVertical,
@@ -35,14 +34,6 @@ import { emit, listen } from "@tauri-apps/api/event";
 
 import { AnnotationEngine } from "@/annotation/engine";
 import type { AnnotationTool, ShapeKind } from "@/annotation/types";
-import { BrushSizeIcon } from "@/components/icons/BrushSizeIcon";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { commands } from "@/ipc/bindings";
 import { logClientError, logClientInfo } from "@/lib/errorLogging";
@@ -74,18 +65,15 @@ const PALETTE = [
   "#000000",
 ];
 
-const MENU =
-  "rounded-xl border-border/80 bg-popover p-1.5 shadow-lg ring-1 ring-border/40";
-
 const SHAPES: { id: ShapeKind; label: string; icon: ReactNode }[] = [
-  { id: "rect", label: "Rectangle", icon: <Square className="size-4" /> },
-  { id: "ellipse", label: "Ellipse", icon: <Circle className="size-4" /> },
-  { id: "line", label: "Line", icon: <Minus className="size-4" /> },
-  { id: "arrow", label: "Arrow", icon: <MoveUpRight className="size-4" /> },
+  { id: "rect", label: "四角形", icon: <Square className="size-5" /> },
+  { id: "ellipse", label: "楕円", icon: <Circle className="size-5" /> },
+  { id: "line", label: "線", icon: <Minus className="size-5" /> },
+  { id: "arrow", label: "矢印", icon: <MoveUpRight className="size-5" /> },
 ];
 
 type ToolId = AnnotationTool;
-type Panel = "color" | "shape" | "size" | null;
+type Panel = "properties" | null;
 
 /** Toolbar transform: `translate3d` keeps the bar on its own GPU layer. */
 function barTransform(x: number, y: number): string {
@@ -434,12 +422,13 @@ export function AnnotationApp() {
         const x = (cursor.x - metrics.x) / metrics.scale;
         const y = (cursor.y - metrics.y) / metrics.scale;
         const r = el.getBoundingClientRect();
-        // Extra left pad so color/shape/size menus stay interactive.
+        // Properties are closed while passing clicks through. Keep only the
+        // compact dock interactive so the screen behind stays usable.
         const over =
-          x >= r.left - 220 &&
-          x <= r.right + 12 &&
-          y >= r.top - 12 &&
-          y <= r.bottom + 12;
+          x >= r.left - 8 &&
+          x <= r.right + 8 &&
+          y >= r.top - 8 &&
+          y <= r.bottom + 8;
         applyIgnore(!over);
       } catch {
         winMetricsRef.current = null;
@@ -477,8 +466,16 @@ export function AnnotationApp() {
 
   /** Activate `next`, or return to pass-through if it was already active. */
   const pickTool = (next: ToolId) => {
-    setTool((t) => (t === next && next !== "select" ? "select" : next));
-    setPanel(null);
+    const selected = tool === next && next !== "select";
+    setTool(selected ? "select" : next);
+    setPanel(selected || next === "select" ? null : "properties");
+  };
+
+  const pickShape = (kind: ShapeKind) => {
+    const selected = tool === "shape" && shapeKind === kind;
+    setShapeKind(kind);
+    setTool(selected ? "select" : "shape");
+    setPanel(selected ? null : "properties");
   };
 
   /** End the grip gesture: commit the final offset to state (so re-renders
@@ -494,10 +491,6 @@ export function AnnotationApp() {
     }
     setBarOffset(dragOffsetRef.current);
   };
-
-  const shapeIcon = SHAPES.find((s) => s.id === shapeKind)?.icon ?? (
-    <Square className="size-4" />
-  );
 
   return (
     // `select-none` is load-bearing: a grip drag otherwise starts a browser
@@ -517,23 +510,20 @@ export function AnnotationApp() {
 
       <div
         ref={toolbarElRef}
-        // `will-change-transform` promotes the bar to its own compositor
-        // layer: moving it re-composites only the bar. Without it, WebKit can
-        // repaint the whole viewport for a fixed-position transform change —
-        // on a transparent overlay window that full-surface repaint flashes
-        // the desktop through for a frame.
-        // Vertically centered: the bar is tall, and anchoring it low (was 72%)
-        // clipped the bottom tools into the Dock on smaller displays.
-        className={cn("fixed top-1/2 right-6 z-10 flex w-12 flex-col items-center gap-0.5 rounded-2xl border border-border bg-card p-1.5 shadow-xl will-change-transform", screenshotChromeHidden && "invisible pointer-events-none")}
+        // Keep the dock on its own compositor layer while dragging over the
+        // transparent full-screen overlay.
+        className={cn(
+          "fixed top-1/2 right-6 z-10 flex w-[78px] max-h-[calc(100vh-32px)] flex-col items-center rounded-[24px] border border-border bg-card p-1.5 text-foreground shadow-2xl will-change-transform",
+          screenshotChromeHidden && "invisible pointer-events-none",
+        )}
         style={{ transform: barTransform(barOffset.x, barOffset.y) }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div
-          className="flex h-8 w-full cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
-          title="Drag"
+          className="flex h-8 w-full shrink-0 cursor-grab items-center justify-center rounded-xl text-muted-foreground hover:bg-muted active:cursor-grabbing"
+          title="ドラッグして移動"
+          aria-label="注釈バーを移動"
           onPointerDown={(e) => {
-            // Belt and braces with the shell's select-none: never let the
-            // grip press begin a selection or native content drag.
             e.preventDefault();
             e.currentTarget.setPointerCapture(e.pointerId);
             draggingRef.current = true;
@@ -548,14 +538,12 @@ export function AnnotationApp() {
           onPointerMove={(e) => {
             const d = dragRef.current;
             if (!d) return;
-            // Keep the grip below the macOS menu bar so the bar stays draggable.
-            const nextY = d.origY + (e.clientY - d.startY);
+            const height = toolbarElRef.current?.offsetHeight ?? 0;
+            const travel = Math.max(0, (window.innerHeight - height) / 2 - 12);
             dragOffsetRef.current = {
               x: d.origX + (e.clientX - d.startX),
-              y: Math.max(nextY, -window.innerHeight * 0.2),
+              y: Math.max(-travel, Math.min(travel, d.origY + (e.clientY - d.startY))),
             };
-            // Mutate the style directly, coalesced to one update per frame —
-            // a React re-render per pointermove is what made the drag lag.
             if (dragRafRef.current === 0) {
               dragRafRef.current = requestAnimationFrame(() => {
                 dragRafRef.current = 0;
@@ -574,232 +562,154 @@ export function AnnotationApp() {
 
         <Divider />
 
-        <ToolBtn
-          label="Click through"
-          active={false}
-          onClick={() => pickTool("select")}
-          icon={<MousePointer2 className="size-4" />}
-        />
-        <ToolBtn
-          label="Pen"
-          active={tool === "pen"}
-          onClick={() => pickTool("pen")}
-          icon={<Pencil className="size-4" />}
-        />
-        <ToolBtn
-          label="Highlighter"
-          active={tool === "highlighter"}
-          onClick={() => pickTool("highlighter")}
-          icon={<Highlighter className="size-4" />}
-        />
-        <ToolBtn
-          label="Eraser"
-          active={tool === "eraser"}
-          onClick={() => pickTool("eraser")}
-          icon={<Eraser className="size-4" />}
-        />
-
-        <DropdownMenu
-          open={panel === "shape"}
-          onOpenChange={(open) => {
-            if (open) {
-              setTool("shape");
-              setPanel("shape");
-            } else if (panel === "shape") {
-              setPanel(null);
-            }
-          }}
-        >
-          <DropdownMenuTrigger asChild>
+        <div className="flex min-h-0 w-full flex-col items-center gap-0.5 overflow-y-auto overscroll-contain">
+          <ToolBtn
+            label="操作を通す"
+            active={passThrough}
+            onClick={() => pickTool("select")}
+            icon={<MousePointer2 className="size-5" />}
+          />
+          <ToolBtn
+            label="ペン"
+            active={tool === "pen"}
+            onClick={() => pickTool("pen")}
+            icon={<Pencil className="size-5" />}
+          />
+          <ToolBtn
+            label="マーカー"
+            active={tool === "highlighter"}
+            onClick={() => pickTool("highlighter")}
+            icon={<Highlighter className="size-5" />}
+          />
+          <ToolBtn
+            label="消しゴム"
+            active={tool === "eraser"}
+            onClick={() => pickTool("eraser")}
+            icon={<Eraser className="size-5" />}
+          />
+          {SHAPES.map((shape) => (
             <ToolBtn
-              label="Shape"
-              active={tool === "shape" || panel === "shape"}
-              icon={shapeIcon}
-              onClick={(e) => {
-                // Second click on an active shape tool → back to click-through.
-                if (tool === "shape") {
-                  e.preventDefault();
-                  setTool("select");
-                  setPanel(null);
-                }
-              }}
+              key={shape.id}
+              label={shape.label}
+              active={tool === "shape" && shapeKind === shape.id}
+              onClick={() => pickShape(shape.id)}
+              icon={shape.icon}
             />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="left"
-            align="center"
-            sideOffset={10}
-            className={cn(MENU, "w-44")}
-          >
-            {SHAPES.map((s) => (
-              <DropdownMenuItem
-                key={s.id}
-                className="gap-2 rounded-md"
-                onSelect={() => {
-                  setShapeKind(s.id);
-                  setTool("shape");
-                }}
-              >
-                <Check
-                  className={cn(
-                    "size-4 shrink-0",
-                    shapeKind === s.id ? "opacity-100" : "opacity-0",
-                  )}
-                />
-                <span className="shrink-0 text-muted-foreground">{s.icon}</span>
-                <span className="min-w-0 flex-1">{s.label}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <ToolBtn
-          label="Text"
-          active={tool === "text"}
-          onClick={() => pickTool("text")}
-          icon={<Type className="size-4" />}
-        />
-
-        <DropdownMenu
-          open={panel === "color"}
-          onOpenChange={(open) =>
-            setPanel(open ? "color" : panel === "color" ? null : panel)
-          }
-        >
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              title="Color"
-              aria-label="Color"
-              className={cn(
-                "flex size-9 items-center justify-center rounded-xl transition-colors hover:bg-muted",
-                panel === "color" && "bg-muted",
-              )}
-            >
-              <span
-                className="size-4 rounded-full ring-1 ring-border"
-                style={{ backgroundColor: color }}
-              />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="left"
-            align="center"
-            sideOffset={10}
-            className={cn(MENU, "w-46")}
-          >
-            <p className="px-2 pt-1 pb-2 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-              Color
-            </p>
-            <div className="grid grid-cols-4 gap-2 px-1.5 pb-1.5">
-              {PALETTE.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={c}
-                  onClick={() => {
-                    setColor(c);
-                    setPanel(null);
-                  }}
-                  className={cn(
-                    "size-8 rounded-lg ring-1 ring-border transition-transform hover:scale-105",
-                    c.toLowerCase() === color.toLowerCase() &&
-                      "ring-2 ring-primary",
-                  )}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-              <label
-                title="Custom color"
-                className={cn(
-                  "relative flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-transform hover:scale-105",
-                  !PALETTE.some(
-                    (c) => c.toLowerCase() === color.toLowerCase(),
-                  ) && "ring-2 ring-primary",
-                )}
-                style={
-                  !PALETTE.some((c) => c.toLowerCase() === color.toLowerCase())
-                    ? { backgroundColor: color }
-                    : undefined
-                }
-              >
-                <Pipette className="pointer-events-none relative z-10 size-3.5 text-foreground drop-shadow" />
-                <input
-                  type="color"
-                  value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#EAB308"}
-                  aria-label="Custom color"
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  onChange={(e) => setColor(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </label>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu
-          open={panel === "size"}
-          onOpenChange={(open) =>
-            setPanel(open ? "size" : panel === "size" ? null : panel)
-          }
-        >
-          <DropdownMenuTrigger asChild>
-            <ToolBtn
-              label="Stroke size"
-              active={panel === "size"}
-              icon={<BrushSizeIcon className="size-4" />}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="left"
-            align="center"
-            sideOffset={10}
-            className={cn(MENU, "w-52 p-3")}
-          >
-            <p className="mb-3 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-              Stroke size
-            </p>
-            <div className="flex items-center gap-3">
-              <Slider
-                min={2}
-                max={24}
-                step={1}
-                value={[brushSize]}
-                onValueChange={(v) => setBrushSize(v[0] ?? 6)}
-                className="flex-1"
-              />
-              <span className="w-6 text-right text-xs tabular-nums text-muted-foreground">
-                {brushSize}
-              </span>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          ))}
+          <ToolBtn
+            label="テキスト"
+            active={tool === "text"}
+            onClick={() => pickTool("text")}
+            icon={<Type className="size-5" />}
+          />
+          <Divider />
+          <ToolBtn
+            label="元に戻す"
+            onClick={() => engineRef.current?.undo()}
+            icon={<Undo2 className="size-5" />}
+          />
+          <ToolBtn
+            label="やり直す"
+            onClick={() => engineRef.current?.redo()}
+            icon={<Redo2 className="size-5" />}
+          />
+          <Divider />
+          <ToolBtn
+            label="すべて消す"
+            title="すべて消す（元に戻せません）"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => engineRef.current?.clearAll()}
+            icon={<Trash2 className="size-5" />}
+          />
+        </div>
 
         <Divider />
-
         <ToolBtn
-          label="Undo"
-          onClick={() => engineRef.current?.undo()}
-          icon={<Undo2 className="size-4" />}
-        />
-        <ToolBtn
-          label="Redo"
-          onClick={() => engineRef.current?.redo()}
-          icon={<Redo2 className="size-4" />}
-        />
-        <ToolBtn
-          label="Clear"
-          onClick={() => engineRef.current?.clearAll()}
-          icon={<Trash2 className="size-4" />}
-        />
-
-        <Divider />
-
-        <ToolBtn
-          label="Close (Esc)"
+          label="閉じる"
           onClick={closeOverlay}
-          icon={<X className="size-4" />}
+          icon={<X className="size-5" />}
         />
+
+        {panel === "properties" && tool !== "select" && (
+          <div
+            role="group"
+            aria-label={tool === "shape" ? "図形の設定" : "道具の設定"}
+            className="absolute top-1/2 right-[calc(100%+12px)] w-[284px] -translate-y-1/2 rounded-[20px] border border-border bg-popover p-4 text-popover-foreground shadow-2xl"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <strong className="text-sm font-semibold">
+                {tool === "shape"
+                  ? SHAPES.find((shape) => shape.id === shapeKind)?.label
+                  : tool === "pen" ? "ペン" : tool === "highlighter" ? "マーカー" : tool === "eraser" ? "消しゴム" : "テキスト"}の設定
+              </strong>
+              <button
+                type="button"
+                aria-label="設定を閉じる"
+                title="設定を閉じる"
+                onClick={() => setPanel(null)}
+                className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {tool !== "eraser" && (
+              <>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">色</p>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="注釈の色">
+                  {PALETTE.map((swatch) => (
+                    <button
+                      key={swatch}
+                      type="button"
+                      aria-label={swatch}
+                      aria-pressed={swatch.toLowerCase() === color.toLowerCase()}
+                      onClick={() => setColor(swatch)}
+                      className={cn(
+                        "size-8 rounded-full border border-border ring-offset-2 ring-offset-popover transition-transform hover:scale-110",
+                        swatch.toLowerCase() === color.toLowerCase() && "ring-2 ring-primary",
+                      )}
+                      style={{ backgroundColor: swatch }}
+                    />
+                  ))}
+                  <label
+                    title="カスタム色"
+                    className={cn(
+                      "relative flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-border bg-muted",
+                      !PALETTE.some((swatch) => swatch.toLowerCase() === color.toLowerCase()) && "ring-2 ring-primary ring-offset-2 ring-offset-popover",
+                    )}
+                    style={!PALETTE.some((swatch) => swatch.toLowerCase() === color.toLowerCase()) ? { backgroundColor: color } : undefined}
+                  >
+                    <Pipette className="pointer-events-none size-4" />
+                    <input
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#EAB308"}
+                      aria-label="カスタム色"
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                      onChange={(e) => setColor(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
+
+            {tool !== "text" && (
+              <div className={cn("flex items-center gap-3", tool !== "eraser" && "mt-4 border-t border-border pt-4")}>
+                <label htmlFor="annotation-brush-size" className="shrink-0 text-xs font-medium">太さ</label>
+                <Slider
+                  id="annotation-brush-size"
+                  min={2}
+                  max={24}
+                  step={1}
+                  value={[brushSize]}
+                  onValueChange={(value) => setBrushSize(value[0] ?? 6)}
+                  aria-label="太さ"
+                  className="flex-1"
+                />
+                <span className="min-w-7 text-right text-xs tabular-nums">{brushSize}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -813,27 +723,24 @@ const ToolBtn = forwardRef<
     active?: boolean;
   } & ComponentPropsWithoutRef<"button">
 >(({ label, icon, active, className, ...props }, ref) => (
-  <Button
+  <button
     ref={ref}
     type="button"
-    variant="ghost"
-    size="icon"
     title={label}
     aria-label={label}
     aria-pressed={active}
     className={cn(
-      "size-9 shrink-0 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground",
-      "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-      active &&
-        "bg-primary/20 text-primary hover:bg-primary/20 hover:text-primary",
+      "flex min-h-[50px] w-full shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 text-center text-[10px] font-medium leading-tight text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
       className,
     )}
     {...props}
   >
     {icon}
-  </Button>
+    <span>{label}</span>
+  </button>
 ));
 
 function Divider() {
-  return <div className="my-0.5 h-px w-7 bg-border" />;
+  return <div className="my-1 h-px w-[80%] shrink-0 bg-border" />;
 }

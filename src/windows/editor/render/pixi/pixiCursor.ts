@@ -15,6 +15,7 @@ import {
   type CursorClickEffectId,
 } from "@/engine/cursorMotion";
 import type { CursorAsset, CursorPlacementFrame } from "@/engine";
+import { RoundedMask } from "./roundedMask";
 
 export type PixiCursorUpdate = {
   placement: CursorPlacementFrame | null;
@@ -22,6 +23,8 @@ export type PixiCursorUpdate = {
   /** Seek / scrub / pause — snap the spring. */
   freeze: boolean;
   videoRect: { x: number; y: number; width: number; height: number };
+  videoCornerRadius: number;
+  flashPoint: { x: number; y: number } | null;
   smoothness: number;
   sway: number;
   motionBlur: number;
@@ -36,11 +39,20 @@ export class PixiCursorOverlay {
 
   private readonly motion = new CursorMotionState();
   private readonly pool: Sprite[] = [];
+  private readonly flashLayer = new Container({ label: "cursor-flash" });
+  private readonly flashDim = new Graphics({ label: "cursor-flash-dim" });
+  private readonly flashMask = new RoundedMask();
+  private readonly flashGlow = new Sprite(createFlashGlowTexture());
+  private readonly flashRing = new Graphics({ label: "cursor-flash-ring" });
   private readonly fx = new Graphics({ label: "cursor-fx" });
   private readonly textures = new WeakMap<object, Texture>();
 
   constructor() {
-    this.container.addChild(this.fx);
+    this.flashGlow.anchor.set(0.5);
+    this.flashLayer.addChild(this.flashDim, this.flashGlow, this.flashRing);
+    this.flashLayer.mask = this.flashMask.graphics;
+    this.flashLayer.visible = false;
+    this.container.addChild(this.flashLayer, this.flashMask.graphics, this.fx);
   }
 
   update(input: PixiCursorUpdate): void {
@@ -106,17 +118,31 @@ export class PixiCursorOverlay {
     }
 
     this.drawStamps(placement.height, rendered);
+    const progress = cursorClickFxProgress(
+      input.pressIntervals,
+      input.timeSec,
+      input.clickEffect,
+    );
+    this.drawFlash(
+      rect,
+      input.videoCornerRadius,
+      input.flashPoint,
+      placement.height,
+      progress,
+      input.clickEffect,
+    );
     this.drawFx(
       tipX,
       tipY,
       placement.height * bounce,
-      cursorClickFxProgress(input.pressIntervals, input.timeSec),
+      progress,
       input.clickEffect,
     );
   }
 
   hide(): void {
     for (const s of this.pool) s.visible = false;
+    this.flashLayer.visible = false;
     this.fx.clear();
     this.container.visible = false;
   }
@@ -124,8 +150,47 @@ export class PixiCursorOverlay {
   destroy(): void {
     for (const s of this.pool) s.destroy();
     this.pool.length = 0;
+    this.flashGlow.destroy({ texture: true, textureSource: true });
+    this.flashDim.destroy();
+    this.flashRing.destroy();
+    this.flashMask.destroy();
+    this.flashLayer.destroy({ children: false });
     this.fx.destroy();
     this.container.destroy({ children: false });
+  }
+
+  private drawFlash(
+    rect: PixiCursorUpdate["videoRect"],
+    cornerRadius: number,
+    point: PixiCursorUpdate["flashPoint"],
+    cursorSize: number,
+    progress: number,
+    effect: CursorClickEffectId,
+  ): void {
+    if (effect !== "flash" || progress <= 0 || !point) {
+      this.flashLayer.visible = false;
+      return;
+    }
+
+    this.flashLayer.visible = true;
+    this.flashMask.set(rect.x, rect.y, rect.width, rect.height, cornerRadius);
+    this.flashDim.clear().rect(rect.x, rect.y, rect.width, rect.height).fill({
+      color: 0x000000,
+      alpha: progress * 0.58,
+    });
+
+    const radius = Math.min(
+      Math.max(72, cursorSize * 2.2),
+      Math.min(rect.width, rect.height) * 0.22,
+    );
+    this.flashGlow.position.set(point.x, point.y);
+    this.flashGlow.setSize(radius * 2, radius * 2);
+    this.flashGlow.alpha = progress;
+    this.flashRing.clear().circle(
+      point.x,
+      point.y,
+      Math.max(24, cursorSize * 0.65),
+    ).stroke({ color: 0xffffff, width: 2.5, alpha: progress * 0.9 });
   }
 
   private drawStamps(
@@ -176,59 +241,46 @@ export class PixiCursorOverlay {
     effect: CursorClickEffectId,
   ): void {
     this.fx.clear();
-    if (effect === "none" || progress <= 0) return;
+    if (effect === "none" || effect === "flash" || progress <= 0) return;
 
     const reveal = 1 - progress;
-    const alpha = progress;
-    const color = 0x2563eb;
     const baseRadius = Math.max(12, cursorSize * 0.55);
-    const strokeWidth = Math.max(2, cursorSize * 0.08);
 
     if (effect === "ripple") {
-      const radius = Math.max(
-        0.5,
-        (1 - Math.pow(progress, 1.35)) * cursorSize * 1.95,
-      );
-      const a = Math.max(0, Math.min(1, Math.pow(progress, 3) * 0.6));
+      // One clear cyan wave travels outward from the press.
+      const radius = baseRadius * 0.4 + reveal * cursorSize * 1.8;
       this.fx.circle(px, py, radius);
       this.fx.stroke({
-        width: Math.max(1, 2 * progress),
-        color,
-        alpha: a,
+        width: Math.max(2.5, cursorSize * 0.08),
+        color: 0x06b6d4,
+        alpha: progress * 0.9,
       });
       return;
     }
 
     if (effect === "spotlight") {
-      const glowRadius = baseRadius + reveal * cursorSize;
-      const innerRadius = Math.max(baseRadius * 0.72, glowRadius * 0.76);
+      // Filled amber layers illuminate the target instead of drawing rings.
+      const glowRadius = baseRadius + reveal * cursorSize * 0.45;
+      this.fx.circle(px, py, glowRadius * 1.35);
+      this.fx.fill({ color: 0xf59e0b, alpha: progress * 0.1 });
       this.fx.circle(px, py, glowRadius);
-      this.fx.stroke({
-        width: Math.max(1.25, strokeWidth * 0.68),
-        color,
-        alpha: alpha * 0.28,
-      });
-      this.fx.circle(px, py, innerRadius);
-      this.fx.stroke({
-        width: Math.max(1.5, strokeWidth * 0.75),
-        color,
-        alpha: alpha * 0.5,
-      });
+      this.fx.fill({ color: 0xf59e0b, alpha: progress * 0.18 });
+      this.fx.circle(px, py, glowRadius * 0.55);
+      this.fx.fill({ color: 0xf59e0b, alpha: progress * 0.25 });
       return;
     }
 
-    const echoOuter = baseRadius + reveal * cursorSize * 1.22;
-    const echoInner = Math.max(baseRadius * 0.58, echoOuter * 0.62);
-    this.fx.circle(px, py, echoOuter);
-    this.fx.stroke({ width: strokeWidth, color, alpha: alpha * 0.72 });
-    this.fx.circle(px, py, echoInner);
-    this.fx.stroke({
-      width: Math.max(1.4, strokeWidth * 0.72),
-      color,
-      alpha: alpha * 0.42,
-    });
-    this.fx.circle(px, py, Math.max(3, baseRadius * 0.18));
-    this.fx.fill({ color, alpha: alpha * 0.14 });
+    // Three violet waves begin at different times, like repeated echoes.
+    for (const delay of [0, 0.25, 0.5]) {
+      const phase = (reveal - delay) / (1 - delay);
+      if (phase < 0 || phase >= 1) continue;
+      this.fx.circle(px, py, baseRadius * 0.45 + phase * cursorSize * 1.5);
+      this.fx.stroke({
+        width: Math.max(2, cursorSize * 0.065),
+        color: 0xa855f7,
+        alpha: (1 - phase) * 0.75,
+      });
+    }
   }
 
   private textureFor(asset: CursorAsset): Texture {
@@ -239,6 +291,22 @@ export class PixiCursorOverlay {
     this.textures.set(key, texture);
     return texture;
   }
+}
+
+function createFlashGlowTexture(): Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("cursor flash: canvas context unavailable");
+  const glow = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  glow.addColorStop(0, "rgba(255,255,255,0.98)");
+  glow.addColorStop(0.24, "rgba(255,250,225,0.7)");
+  glow.addColorStop(0.55, "rgba(255,250,225,0.15)");
+  glow.addColorStop(1, "rgba(255,250,225,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 128, 128);
+  return Texture.from(canvas);
 }
 
 /** Last stamp, or last two when they share a tip (shape crossfade). */

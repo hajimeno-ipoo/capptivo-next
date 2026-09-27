@@ -1,196 +1,82 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  MousePointer2,
-  Image as ImageIcon,
-  Settings,
-  Video,
-  Wallpaper,
-  ZoomIn,
+  Box, Captions, Crop, Gauge, Image as ImageIcon, MousePointer2,
+  Settings, Shield, Type, Video, Wallpaper, X, ZoomIn,
 } from "lucide-react";
-import type { ReactNode } from "react";
-
-import { ClosedCaption } from "@/components/icons/ClosedCaption";
-
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/settings";
 import type { TranslationKey } from "@/lib/i18n";
-import { supportsEditorFeature, type EditorFeature } from "../lib/editorMode";
+import { supportsEditorFeature } from "../lib/editorMode";
 
-export const INSPECTOR_PANEL_IDS = [
-  "look",
-  "image",
-  "cursor",
-  "camera",
-  "zoom",
-  "captions",
-  "config",
-] as const;
-
+export const INSPECTOR_PANEL_IDS = ["look", "image", "cursor", "camera", "zoom", "captions", "config"] as const;
 export type InspectorPanelId = (typeof INSPECTOR_PANEL_IDS)[number];
 
-const PANEL_META: Record<
-  InspectorPanelId,
-  { icon: LucideIcon; titleKey: TranslationKey; subtitleKey: TranslationKey }
-> = {
-  look: {
-    icon: Wallpaper,
-    titleKey: "panel.look.title",
-    subtitleKey: "panel.look.subtitle",
-  },
-  image: {
-    icon: ImageIcon,
-    titleKey: "panel.image.title",
-    subtitleKey: "panel.image.subtitle",
-  },
-  cursor: {
-    icon: MousePointer2,
-    titleKey: "panel.cursor.title",
-    subtitleKey: "panel.cursor.subtitle",
-  },
-  camera: {
-    icon: Video,
-    titleKey: "panel.camera.title",
-    subtitleKey: "panel.camera.subtitle",
-  },
-  zoom: {
-    icon: ZoomIn,
-    titleKey: "panel.zoom.title",
-    subtitleKey: "panel.zoom.subtitle",
-  },
-  captions: {
-    icon: ClosedCaption,
-    titleKey: "panel.captions.title",
-    subtitleKey: "panel.captions.subtitle",
-  },
-  config: {
-    icon: Settings,
-    titleKey: "panel.config.title",
-    subtitleKey: "panel.config.subtitle",
-  },
-};
+export type EditorToolId =
+  | "background" | "crop" | "mask" | "text" | "zoom" | "perspective"
+  | "speed" | "image" | "cursor" | "camera" | "captions" | "config";
 
-const MODE_FEATURE_BY_PANEL: Partial<Record<InspectorPanelId, EditorFeature>> = {
-  image: "image-tools",
-  cursor: "cursor",
-  camera: "camera",
-  captions: "captions",
-};
+const TOOLS: { id: EditorToolId; icon: LucideIcon; labelKey: TranslationKey }[] = [
+  { id: "background", icon: Wallpaper, labelKey: "look.background" },
+  { id: "crop", icon: Crop, labelKey: "crop.label" },
+  { id: "mask", icon: Shield, labelKey: "blur.label" },
+  { id: "text", icon: Type, labelKey: "text.label" },
+  { id: "zoom", icon: ZoomIn, labelKey: "panel.zoom.title" },
+  { id: "perspective", icon: Box, labelKey: "look.threeD" },
+  { id: "speed", icon: Gauge, labelKey: "export.gifSpeed" },
+  { id: "image", icon: ImageIcon, labelKey: "panel.image.title" },
+  { id: "cursor", icon: MousePointer2, labelKey: "panel.cursor.title" },
+  { id: "camera", icon: Video, labelKey: "panel.camera.title" },
+  { id: "captions", icon: Captions, labelKey: "panel.captions.title" },
+  { id: "config", icon: Settings, labelKey: "panel.config.title" },
+];
 
-type InspectorChromeProps = {
-  activePanel: InspectorPanelId;
-  onPanelChange: (id: InspectorPanelId) => void;
-  /** When false, the Face cam rail item is disabled. */
+type Props = {
+  activeTool: EditorToolId;
+  onToolChange: (id: EditorToolId) => void;
+  panelOpen: boolean;
+  onPanelOpenChange: (open: boolean) => void;
   hasFaceCam?: boolean;
   isScreenshot?: boolean;
-  /** Capptivo logo — switch this window to the recordings library. */
-  onOpenRecordings: () => void;
-  /** Scrollable body for the active panel only. */
   children: ReactNode;
 };
 
-/**
- * Narrow icon rail + wide inspector column (double sidebar), left of the canvas.
- */
+/** A compact tool rail and contextual panel; the canvas keeps its full width. */
 export function InspectorChrome({
-  activePanel,
-  onPanelChange,
-  hasFaceCam = false,
-  isScreenshot = false,
-  onOpenRecordings,
-  children,
-}: InspectorChromeProps) {
+  activeTool, onToolChange, panelOpen, onPanelOpenChange,
+  hasFaceCam = false, isScreenshot = false, children,
+}: Props) {
   const { t } = useI18n();
-
-  return (
-    <div className="flex h-full shrink-0 border-r border-border bg-background text-foreground">
-      <nav
-        className="flex w-14 shrink-0 flex-col items-center border-r border-border py-3"
-        aria-label={t("panel.config.title")}
-      >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Open recordings"
-              title="Recordings"
-              onClick={onOpenRecordings}
-              className="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-black/4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-accent/60"
-            >
-              <img
-                src="/logo.svg"
-                alt=""
-                className="size-6 object-contain"
-                decoding="async"
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">Recordings</TooltipContent>
-        </Tooltip>
-
-        <div className="mt-4 flex flex-1 flex-col items-center gap-1">
-          {INSPECTOR_PANEL_IDS.map((id) => {
-            const meta = PANEL_META[id];
-            const Icon = meta.icon;
-            const isActive = activePanel === id;
-            const modeFeature = MODE_FEATURE_BY_PANEL[id];
-            const disabled = (modeFeature != null
-              && !supportsEditorFeature(isScreenshot ? "screenshot" : "video", modeFeature))
-              || (id === "camera" && !hasFaceCam);
-            const title = id === "camera" && !isScreenshot && !hasFaceCam
-              ? t("panel.camera.disabled")
-              : t(meta.titleKey);
-
-            return (
-              <Tooltip key={id}>
-                <TooltipTrigger asChild>
-                  {/* Span keeps tooltip working when the button is disabled. */}
-                  <span className="inline-flex size-10 items-center justify-center">
-                    <button
-                      type="button"
-                      aria-label={title}
-                      aria-pressed={isActive}
-                      disabled={disabled}
-                      onClick={() => onPanelChange(id)}
-                      className={cn(
-                        "flex size-10 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 transition-colors",
-                        disabled &&
-                          "cursor-not-allowed opacity-40 text-muted-foreground",
-                        !disabled && isActive
-                          ? // Light: warm peach + rust (matches brand). Dark: neutral chip.
-                            "bg-primary/12 text-primary ring-1 ring-primary/20 dark:bg-accent dark:text-accent-foreground dark:ring-border"
-                          : !disabled &&
-                              "text-muted-foreground hover:bg-black/4 hover:text-foreground dark:hover:bg-accent/60 dark:hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-5 shrink-0" strokeWidth={1.75} />
-                    </button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right">{title}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </nav>
-
-      <aside className="flex w-[min(380px,calc(100vw-3.5rem))] max-w-[420px] min-w-[280px] shrink-0 flex-col border-r border-border bg-card">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="text-sm font-semibold tracking-tight text-foreground">
-              {t(PANEL_META[activePanel].titleKey)}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t(PANEL_META[activePanel].subtitleKey)}
-            </p>
-          </div>
-          <div className="p-5">{children}</div>
-        </div>
-      </aside>
-    </div>
-  );
+  const activeLabel = t(TOOLS.find((item) => item.id === activeTool)?.labelKey ?? "panel.config.title");
+  return <div className="relative z-20 flex h-full shrink-0 border-r border-border bg-card text-foreground">
+    <nav aria-label={t("editor.tools")} className="flex w-[86px] shrink-0 flex-col items-center overflow-y-auto px-1 py-3">
+      <div className="flex w-full flex-1 flex-col gap-1">
+        {TOOLS.map(({ id, icon: Icon, labelKey }) => {
+          const label = t(labelKey);
+          const disabled = (id === "image" && !supportsEditorFeature(isScreenshot ? "screenshot" : "video", "image-tools"))
+            || ((id === "cursor" || id === "camera" || id === "captions" || id === "speed") && isScreenshot)
+            || (id === "camera" && !hasFaceCam);
+          return <button key={id} type="button" disabled={disabled} title={disabled && id === "camera" ? t("panel.camera.disabled") : label}
+            aria-label={label} aria-pressed={panelOpen && activeTool === id}
+            onClick={() => onToolChange(id)}
+            className={cn("flex min-h-12 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-center text-[10px] leading-tight transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+              disabled ? "cursor-not-allowed opacity-35" : panelOpen && activeTool === id
+                ? "bg-primary/12 text-primary ring-1 ring-primary/25"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground")}
+          >
+            <Icon className="size-[18px] shrink-0" strokeWidth={1.8} aria-hidden />
+            <span>{label}</span>
+          </button>;
+        })}
+      </div>
+    </nav>
+    <aside className={cn("absolute left-[94px] top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-[min(340px,calc(100vw-112px))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15", !panelOpen && "hidden")}>
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold">{activeLabel}</h2>
+        <button type="button" onClick={() => onPanelOpenChange(false)} aria-label={t("recorder.close")}
+          className="rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><X className="size-4" /></button>
+      </div>
+      <div className="min-h-0 overflow-y-auto p-4">{children}</div>
+    </aside>
+  </div>;
 }

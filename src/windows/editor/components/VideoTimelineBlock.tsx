@@ -22,8 +22,8 @@ export function VideoTimelineBlock({ segment, selected, resizable = true, onResi
       className={cn(
         "group/clip relative flex h-full w-full min-w-[2.75rem] items-center justify-center overflow-hidden rounded-[10px] transition-[background-color,border-color,box-shadow] duration-150",
         selected
-          ? "border border-sky-200/90 bg-[#2e7eaa] shadow-[inset_0_0_0_1px_rgba(186,230,253,0.5)]"
-          : "border border-transparent bg-gradient-to-r from-[#235c80] via-[#2a6f98] to-[#2e7eaa] hover:from-[#2a6f98] hover:via-[#2e7eaa] hover:to-[#3b91bd]",
+          ? "border border-sky-700 bg-sky-300 shadow-[inset_0_0_0_1px_rgba(3,105,161,0.35)]"
+          : "border border-transparent bg-gradient-to-r from-cyan-300 via-sky-300 to-sky-400 hover:from-cyan-200 hover:via-sky-200 hover:to-sky-300",
       )}
       title={range}
     >
@@ -43,14 +43,14 @@ export function VideoTimelineBlock({ segment, selected, resizable = true, onResi
           />
         </>
       )}
-      <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-white select-none">
+      <div className="pointer-events-none relative z-10 flex max-w-full flex-col items-center justify-center px-3 py-0.5 text-sky-950 select-none">
         <div className="flex items-center gap-1">
           <Clapperboard className="size-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
           <span className="text-[11px] font-semibold tracking-tight">{t("timeline.clip")}</span>
         </div>
         <span
           className={cn(
-            "text-[9px] font-medium tracking-tight tabular-nums text-white/85",
+            "text-[9px] font-medium tracking-tight tabular-nums text-sky-950/85",
             selected ? "opacity-75" : "opacity-0 transition-opacity group-hover/clip:opacity-60",
           )}
         >

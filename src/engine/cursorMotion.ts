@@ -224,19 +224,22 @@ export const CURSOR_CLICK_EFFECT_IDS = [
   "ripple",
   "spotlight",
   "echo",
+  "flash",
 ] as const;
 export type CursorClickEffectId = (typeof CURSOR_CLICK_EFFECT_IDS)[number];
 
 export const CURSOR_CLICK_FX_DURATION_S = 0.55;
-/** FX starts halfway through the bounce so the press reads first. */
+export const CURSOR_FLASH_DURATION_S = 0.8;
+const CURSOR_FLASH_HOLD_S = 0.2;
+/** Ripple, spotlight and echo start halfway through the bounce. */
 export const CURSOR_CLICK_FX_DELAY_S = CURSOR_BOUNCE_DURATION_S * 0.5;
 
-/** 1 → just started, 0 → finished; 0 when inactive. */
-export function cursorClickFxProgress(
+/** Latest recorded press at or before `time`, independent of frame order. */
+export function cursorClickFxStart(
   pressIntervals: readonly { start: number; end: number }[] | undefined,
   time: number,
-): number {
-  if (!pressIntervals || pressIntervals.length === 0) return 0;
+): number | null {
+  if (!pressIntervals || pressIntervals.length === 0) return null;
   let lo = 0;
   let hi = pressIntervals.length - 1;
   let idx = -1;
@@ -249,10 +252,25 @@ export function cursorClickFxProgress(
       hi = mid - 1;
     }
   }
-  if (idx < 0) return 0;
-  const age = time - pressIntervals[idx].start - CURSOR_CLICK_FX_DELAY_S;
-  if (age < 0 || age > CURSOR_CLICK_FX_DURATION_S) return 0;
-  return 1 - age / CURSOR_CLICK_FX_DURATION_S;
+  return idx < 0 ? null : pressIntervals[idx].start;
+}
+
+/** 1 → just started, 0 → finished; 0 when inactive. */
+export function cursorClickFxProgress(
+  pressIntervals: readonly { start: number; end: number }[] | undefined,
+  time: number,
+  effect: CursorClickEffectId = "ripple",
+): number {
+  const start = cursorClickFxStart(pressIntervals, time);
+  if (start === null) return 0;
+  const duration = effect === "flash" ? CURSOR_FLASH_DURATION_S : CURSOR_CLICK_FX_DURATION_S;
+  const delay = effect === "flash" ? 0 : CURSOR_CLICK_FX_DELAY_S;
+  const age = time - start - delay;
+  if (age < 0 || age > duration) return 0;
+  if (effect === "flash") {
+    return 1 - Math.max(0, age - CURSOR_FLASH_HOLD_S) / (duration - CURSOR_FLASH_HOLD_S);
+  }
+  return 1 - age / duration;
 }
 
 const SWAY_MAX_ROT = Math.PI / 18;

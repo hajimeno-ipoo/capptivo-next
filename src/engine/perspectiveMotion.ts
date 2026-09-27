@@ -165,6 +165,18 @@ export function computePerspectiveEnvelope(
   return 1;
 }
 
+/** Show a fully applied 3D frame when selecting a block for adjustment. */
+export function perspectiveEditPreviewTime(fragment: PerspectiveFragment): number {
+  const duration = Math.max(0, fragment.end - fragment.start);
+  if (duration === 0) return fragment.start;
+  const easeIn = clamp(finiteOr(fragment.easeIn, 0), 0, duration / 2);
+  const easeOut = clamp(finiteOr(fragment.easeOut, 0), 0, duration / 2);
+  const fullEffectStart = fragment.start + easeIn;
+  const fullEffectEnd = fragment.end - easeOut;
+  const fullEffectSpan = Math.max(0, fullEffectEnd - fullEffectStart);
+  return fullEffectStart + Math.min(1 / 30, fullEffectSpan / 2);
+}
+
 /** Values to apply to the recording plane for one source timestamp. */
 export function perspectiveValuesAtTime(
   fragment: PerspectiveFragment | null,

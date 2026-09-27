@@ -58,6 +58,7 @@ mod area_picker {
     pub fn hide_area_frame_guide(_app: &AppHandle) {}
 }
 mod backgrounds;
+mod mac_wallpapers;
 mod cursor;
 mod error;
 mod error_log;
@@ -137,7 +138,7 @@ pub fn run() {
         })
         .invoke_handler(crate::command_handlers!())
         .build(tauri::generate_context!())
-        .expect("error while building Capptivo Desktop")
+        .expect("error while building Capptivo_Next Desktop")
         .run(|app, event| match event {
             // Launch straight into the recorder — clicking the app means the
             // user wants to record, not hunt the tray icon first. Deferred to

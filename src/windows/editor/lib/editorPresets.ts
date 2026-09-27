@@ -215,6 +215,8 @@ function normalizeExportSettings(raw: unknown): ExportSettings {
     d.encoding === "quality"
       ? d.encoding
       : DEFAULT_EXPORT_SETTINGS.encoding;
+  const resolution = d.resolution === "1080p" || d.resolution === "4k"
+    ? d.resolution : DEFAULT_EXPORT_SETTINGS.resolution;
   const fps =
     d.fps === 24 || d.fps === 30 || d.fps === 60
       ? d.fps
@@ -224,7 +226,7 @@ function normalizeExportSettings(raw: unknown): ExportSettings {
       ? d.audioEnhance
       : DEFAULT_EXPORT_SETTINGS.audioEnhance;
   const gifSpeed = clampGifSpeed(d.gifSpeed);
-  return { format, container, encoding, fps, audioEnhance, gifSpeed };
+  return { format, container, encoding, resolution, fps, audioEnhance, gifSpeed };
 }
 
 function normalizeFaceCam(raw: unknown): FaceCamParams {

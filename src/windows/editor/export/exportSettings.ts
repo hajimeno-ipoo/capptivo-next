@@ -8,6 +8,7 @@ import { computeExportDimensionsForVideo } from "../lib/composition";
 export type ExportFormat = "mp4" | "gif";
 export type ExportContainer = "mp4" | "webm";
 export type ExportEncoding = "fast" | "balanced" | "quality";
+export type ExportResolution = "1080p" | "4k";
 export type ExportFps = 24 | 30 | 60;
 /** Voice-enhancement preset applied to the exported audio (ignored for GIF). */
 export type ExportAudioEnhance = "off" | "podcast";
@@ -40,6 +41,7 @@ export type ExportSettings = {
   /** File container when format is video (ignored for GIF). */
   container: ExportContainer;
   encoding: ExportEncoding;
+  resolution: ExportResolution;
   fps: ExportFps;
   audioEnhance: ExportAudioEnhance;
   /** GIF-only playback speed (1…4). Ignored when format is video. */
@@ -50,6 +52,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: "mp4",
   container: "mp4",
   encoding: "balanced",
+  resolution: "1080p",
   fps: 30,
   audioEnhance: "off",
   gifSpeed: DEFAULT_GIF_SPEED,
@@ -57,11 +60,11 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
 
 /**
  * Output size comes straight from the composition stage (the aspect-ratio
- * picker in the timeline), capped per format: Full HD for video, and lower for
+ * picker in the timeline), capped by the selected video resolution, and lower for
  * GIF because a Full HD GIF is enormous — the compositor still supersamples +
  * dithers, so these are the true output pixel dimensions.
  */
-const VIDEO_LONG_EDGE = 1920;
+const VIDEO_LONG_EDGE: Record<ExportResolution, number> = { "1080p": 1920, "4k": 3840 };
 const GIF_LONG_EDGE = 1280;
 
 /** GIF frame rates — browser fps presets map down to GIF-friendly rates. */
@@ -151,8 +154,9 @@ export function exportDimensionsFor(
   stageWidth: number,
   stageHeight: number,
   format: ExportFormat = "mp4",
+  resolution: ExportResolution = DEFAULT_EXPORT_SETTINGS.resolution,
 ): { width: number; height: number } {
-  const longEdge = format === "gif" ? GIF_LONG_EDGE : VIDEO_LONG_EDGE;
+  const longEdge = format === "gif" ? GIF_LONG_EDGE : VIDEO_LONG_EDGE[resolution];
   return computeExportDimensionsForVideo(stageWidth, stageHeight, longEdge);
 }
 
@@ -180,7 +184,7 @@ export function resolveExportParams(
   stageWidth: number,
   stageHeight: number,
 ): ResolvedExportParams {
-  const { width, height } = exportDimensionsFor(stageWidth, stageHeight, settings.format);
+  const { width, height } = exportDimensionsFor(stageWidth, stageHeight, settings.format, settings.resolution);
   const isGif = settings.format === "gif";
   return {
     width,

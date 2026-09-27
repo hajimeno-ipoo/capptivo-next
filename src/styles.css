@@ -4,14 +4,8 @@
 /* `dark:` utilities apply under a `.dark` ancestor (set on the editor <html>). */
 @custom-variant dark (&:is(.dark *));
 
-/*
- * shadcn design tokens ported from the web editor's app.css.
- *
- * `:root` holds the DARK palette so the recorder popover — which uses semantic
- * tokens with no theme wrapper — stays dark, unchanged. The editor window sets
- * `dark` or `light` on its own <html>, so the `.light` block below overrides the
- * defaults, and portalled UI (dialogs, dropdowns) inherits the theme too.
- */
+/* The selected light-blue chrome is shared by all windows. Theme settings still
+ * support the dark palette and portal content inherits the root class. */
 @theme inline {
   --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji";
   --font-brand: "Orbitron", ui-sans-serif, system-ui, sans-serif;
@@ -39,50 +33,47 @@
 }
 
 :root,
-.dark {
+.light {
   --radius: 0.625rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  /* Cards/popovers sit one step above the base so panels read as elevated. */
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.6546 0.1625 37.34);
-  --primary-foreground: oklch(0.12 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  /* Translucent so hairline borders keep their subtle look in both themes. */
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: oklch(0.974 0.012 245);
+  --foreground: oklch(0.255 0.035 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.255 0.035 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.255 0.035 258);
+  --primary: oklch(0.59 0.19 259);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.952 0.015 245);
+  --secondary-foreground: oklch(0.32 0.045 254);
+  --muted: oklch(0.951 0.014 245);
+  --muted-foreground: oklch(0.52 0.04 252);
+  --accent: oklch(0.93 0.031 251);
+  --accent-foreground: oklch(0.39 0.12 258);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.83 0.025 247 / 75%);
+  --input: oklch(0.90 0.018 246);
+  --ring: oklch(0.59 0.19 259);
 }
 
-.light {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.205 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.205 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.205 0 0);
-  --primary: oklch(0.6546 0.1625 37.34);
-  /* Same brand orange in both themes → keep the dark-on-orange label too. */
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.968 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0 0 0 / 10%);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+.dark {
+  --background: oklch(0.18 0.025 255);
+  --foreground: oklch(0.965 0.01 245);
+  --card: oklch(0.235 0.025 255);
+  --card-foreground: oklch(0.965 0.01 245);
+  --popover: oklch(0.235 0.025 255);
+  --popover-foreground: oklch(0.965 0.01 245);
+  --primary: oklch(0.69 0.15 252);
+  --primary-foreground: oklch(0.15 0.025 255);
+  --secondary: oklch(0.29 0.025 255);
+  --secondary-foreground: oklch(0.965 0.01 245);
+  --muted: oklch(0.29 0.025 255);
+  --muted-foreground: oklch(0.74 0.025 245);
+  --accent: oklch(0.33 0.05 255);
+  --accent-foreground: oklch(0.965 0.01 245);
+  --destructive: oklch(0.62 0.19 27);
+  --border: oklch(0.77 0.025 245 / 19%);
+  --input: oklch(0.31 0.025 255);
+  --ring: oklch(0.69 0.15 252);
 }
 
 html,

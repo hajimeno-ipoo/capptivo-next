@@ -56,6 +56,7 @@ impl CaptureBackend for TestPatternBackend {
             id: "display:test".into(),
             kind: CaptureSourceKind::Display,
             title: "Test Pattern".into(),
+            app_name: None,
             width: W,
             height: H,
             is_primary: true,

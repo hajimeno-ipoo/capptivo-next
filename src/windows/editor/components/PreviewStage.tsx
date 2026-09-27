@@ -63,10 +63,6 @@ import {
   screenClockIsRolling,
   shouldSeekFaceCam,
 } from "../lib/faceCamSync";
-import {
-  MEDIA_DIRECT_PREVIEW_LIMIT,
-  probeMediaSize,
-} from "../lib/mediaBlobUrl";
 import { useI18n } from "@/lib/settings";
 import { mediaUrl } from "@/lib/platform";
 import { toBlobMediaUrl } from "../lib/mediaBlobUrl";
@@ -77,9 +73,11 @@ import { DEFAULT_SCREENSHOT_EDITS, drawScreenshotMarks, screenshotStage } from "
 export function PreviewStage({
   videoRef,
   screenshotFrameRef,
+  onCanvasHost,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   screenshotFrameRef?: MutableRefObject<(() => HTMLCanvasElement | null) | null>;
+  onCanvasHost?: (node: HTMLDivElement | null) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<HTMLVideoElement | null>(null);
@@ -91,6 +89,10 @@ export function PreviewStage({
   const screenshotId = useEditorStore((s) => s.screenshotId);
   const screenshotMarks = useEditorStore((s) => s.screenshotMarks);
   const screenshotSourceSize = useEditorStore((s) => s.sourceVideoSize);
+  const screenshotLook = useEditorStore((s) => s.look);
+  const screenshotCrop = useEditorStore((s) => s.screenContentCrop);
+  const screenshotBackground = useEditorStore((s) => s.backgroundImage);
+  const screenshotBackgroundType = useEditorStore((s) => s.backgroundType);
 
   useEffect(() => {
     screenshotSourceRef.current = null;
@@ -137,40 +139,8 @@ export function PreviewStage({
 
   const { t: translate } = useI18n();
   const screenUrl = useEditorStore((s) => s.screenUrl);
-  const proxyUrl = useEditorStore((s) => s.proxyUrl);
-  const proxyPending = useEditorStore((s) => s.proxyPending);
   const cameraUrl = useEditorStore((s) => s.cameraUrl);
-
-  /**
-   * `null` until probed. `true` = the original is small enough to preview
-   * directly while the proxy transcodes; `false` = wait for the proxy instead.
-   */
-  const [originalIsSmall, setOriginalIsSmall] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!screenUrl) {
-      setOriginalIsSmall(null);
-      return;
-    }
-    const ac = new AbortController();
-    setOriginalIsSmall(null);
-    void probeMediaSize(screenUrl, { signal: ac.signal })
-      .then((size) => {
-        if (!ac.signal.aborted) {
-          setOriginalIsSmall(
-            size === null || size <= MEDIA_DIRECT_PREVIEW_LIMIT,
-          );
-        }
-      })
-      .catch(() => {
-        if (!ac.signal.aborted) setOriginalIsSmall(true);
-      });
-    return () => ac.abort();
-  }, [screenUrl]);
-
-  const waitingForProxy = proxyPending && originalIsSmall === false;
-  const previewUrl = proxyUrl ?? (waitingForProxy ? null : screenUrl);
-  const playbackUrl = useSameOriginMediaUrl(previewUrl);
+  const playbackUrl = useSameOriginMediaUrl(screenUrl);
   const playbackCameraUrl = useSameOriginMediaUrl(cameraUrl);
 
   const isPlaying = useEditorStore((s) => s.isPlaying);
@@ -277,7 +247,14 @@ export function PreviewStage({
   const stage = useStageDimensions();
   const screenshotOutput = screenshotId ? screenshotStage(
     screenshotSourceSize ?? { width: 1920, height: 1080 },
-    { ...DEFAULT_SCREENSHOT_EDITS, aspectRatioPresetId: useEditorStore.getState().aspectRatioPresetId },
+    {
+      ...DEFAULT_SCREENSHOT_EDITS,
+      aspectRatioPresetId: useEditorStore.getState().aspectRatioPresetId,
+      look: screenshotLook,
+      crop: screenshotCrop ?? DEFAULT_SCREENSHOT_EDITS.crop,
+    },
+    screenshotBackground !== null,
+    screenshotBackgroundType,
   ).output : stage;
   const stageRef = useRef(stage);
   stageRef.current = stage;
@@ -863,14 +840,15 @@ export function PreviewStage({
             }}
           >
             <div ref={hostRef} className="block h-full w-full" />
-            {playbackUrl === null && proxyPending ? (
+            <div ref={onCanvasHost} className="@container-size pointer-events-none absolute inset-0 z-10" />
+            {playbackUrl === null && !screenshotId ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-white/80">
                 {translate("preview.preparing")}
               </div>
             ) : null}
             <video
               ref={videoRef}
-              // Fresh element per source — WKWebView errors on blob src reuse after proxy swap.
+              // Fresh element per source — WKWebView errors on blob src reuse.
               key={playbackUrl ?? "no-source"}
               src={playbackUrl ?? undefined}
               className="hidden"
@@ -942,9 +920,9 @@ export function PreviewStage({
         </div>
       </div>
 
-      <div className="w-full shrink-0">
+      {!screenshotId && <div className="w-full shrink-0">
         <PlaybackControls videoRef={videoRef} />
-      </div>
+      </div>}
     </div>
   );
 }

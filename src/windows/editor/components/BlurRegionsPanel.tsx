@@ -1,40 +1,48 @@
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import {
   blurRegionIsActive,
   blurRegionPlacement,
   clampBlurRegion,
   contentRectPixelsFromCrop,
-  hexColorWithAlpha,
   type BlurRegion,
   type ScreenContentCropNorm,
 } from "@/engine";
 
 import { Button } from "@/components/ui/button";
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/settings";
 
 import { cornerHandleOverlayStyle, CROP_HANDLE_SIZE } from "../lib/cropHandles";
+import { formatTimelineTime } from "../lib/timelineMath";
+import { useEditorStore } from "../store";
 import {
   containsPoint,
   hitHandleAt,
   useRectDrag,
   type RectHit,
 } from "../lib/useRectDrag";
-import {
-  InspectorCompositionFrame,
-  type InspectorCompositionLayout,
-} from "./InspectorCompositionFrame";
+import type { InspectorCompositionLayout } from "./InspectorCompositionFrame";
+import { ClipTimingDisplay } from "./ClipTimingDisplay";
 
 type BlurRegionsPanelProps = {
-  videoUrl: string;
   fileAspect?: number;
   duration?: number;
   disabled?: boolean;
   regions: BlurRegion[];
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
+  onSeek?: (time: number) => void;
   onAdd: (kind?: "blur" | "highlight") => void;
   onChange: (id: string, patch: Partial<Omit<BlurRegion, "id">>) => void;
   onRemove: (id: string) => void;
@@ -42,6 +50,7 @@ type BlurRegionsPanelProps = {
   className?: string;
   composition: InspectorCompositionLayout;
   sourceVideoSize: { width: number; height: number } | null;
+  canvasHost?: HTMLDivElement | null;
 };
 
 type NormRect = { x: number; y: number; width: number; height: number };
@@ -123,13 +132,13 @@ function regionFromStageRect(
 }
 
 export function BlurRegionsPanel({
-  videoUrl,
   fileAspect,
   duration = 0,
   disabled = false,
   regions,
   selectedId: selectedIdProp,
   onSelect,
+  onSeek,
   onAdd,
   onChange,
   onRemove,
@@ -137,13 +146,19 @@ export function BlurRegionsPanel({
   className,
   composition,
   sourceVideoSize,
+  canvasHost,
 }: BlurRegionsPanelProps) {
   const { t } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
+  const [localKind, setLocalKind] = useState<"blur" | "highlight">("blur");
 
   const selectedId = selectedIdProp !== undefined ? selectedIdProp : localSelectedId;
   const selected = regions.find((r) => r.id === selectedId) ?? null;
+  const activeKind = selected?.kind ?? localKind;
+  const activeRegions = regions
+    .filter((region) => region.kind === activeKind)
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id));
   const sourceSize = fullSourceRect(sourceVideoSize, fileAspect);
   const previewTime = seekTo ?? 0;
   const visibleRegions = regions.filter((region) =>
@@ -152,6 +167,18 @@ export function BlurRegionsPanel({
   const setSelectedId = (id: string | null) => {
     setLocalSelectedId(id);
     onSelect?.(id);
+  };
+  const showKind = (kind: "blur" | "highlight") => {
+    setLocalKind(kind);
+    setSelectedId(regions.find((region) => region.kind === kind)?.id ?? null);
+  };
+  const selectRegion = (id: string) => {
+    const region = activeRegions.find((candidate) => candidate.id === id);
+    if (!region) return;
+    const { isPlaying, setPlaying } = useEditorStore.getState();
+    if (isPlaying) setPlaying(false);
+    setSelectedId(id);
+    onSeek?.(region.start);
   };
 
   const pick = useCallback(
@@ -201,24 +228,58 @@ export function BlurRegionsPanel({
         {t("blur.label")}
       </FieldLabelWithHint>
 
+      <div className="inline-flex items-center rounded-xl bg-muted p-1" role="group" aria-label={t("blur.label")}>
+        {(["blur", "highlight"] as const).map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            aria-pressed={activeKind === kind}
+            onClick={() => showKind(kind)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+              activeKind === kind
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t(kind === "blur" ? "blur.mask" : "blur.highlight")}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="inspector-blur-fragment" className="text-muted-foreground">
+          {t("clip.fragment.label")}
+        </Label>
+        <Select
+          value={selected && selected.kind === activeKind ? selected.id : undefined}
+          onValueChange={selectRegion}
+          disabled={activeRegions.length === 0}
+        >
+          <SelectTrigger id="inspector-blur-fragment" className="h-9 w-full">
+            <SelectValue placeholder={t("clip.fragment.placeholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            {activeRegions.map((region, index) => (
+              <SelectItem key={region.id} value={region.id}
+                onPointerUp={() => { if (selectedId === region.id) selectRegion(region.id); }}
+                onKeyDown={(event) => { if (event.key === "Enter" && selectedId === region.id) selectRegion(region.id); }}>
+                {`${index + 1}. ${formatTimelineTime(region.start)} – ${formatTimelineTime(region.end)}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           variant="secondary"
           size="sm"
           disabled={disabled}
-          onClick={() => onAdd("blur")}
+          onClick={() => onAdd(activeKind)}
         >
-          {t("blur.add")}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={disabled}
-          onClick={() => onAdd("highlight")}
-        >
-          {t("blur.addHighlight")}
+          {t(activeKind === "blur" ? "blur.add" : "blur.addHighlight")}
         </Button>
         {selected && (
           <Button
@@ -237,17 +298,15 @@ export function BlurRegionsPanel({
         )}
       </div>
 
-      {regions.length > 0 && (
+      {/* The compositor already draws the effects; this layer only handles selection. */}
+      {regions.length > 0 && canvasHost && createPortal(
         <div
-          className="relative w-full"
+          className="pointer-events-auto absolute inset-0"
           style={{ cursor }}
         >
-          <InspectorCompositionFrame
+          <div
             ref={stageRef}
-            videoUrl={videoUrl}
-            seekTo={seekTo}
-            {...composition}
-            className="border-0"
+            className="relative h-full w-full touch-none select-none"
             {...handlers}
           >
             {visibleRegions.map((region) => {
@@ -268,16 +327,11 @@ export function BlurRegionsPanel({
                   top: `${rect.y * 100}%`,
                   width: `${rect.width * 100}%`,
                   height: `${rect.height * 100}%`,
-                  backdropFilter: region.kind === "blur" ? "blur(6px)" : undefined,
-                  background:
-                    region.kind === "highlight"
-                      ? hexColorWithAlpha(region.highlightColor, region.highlightOpacity)
-                      : undefined,
                 }}
               />
               );
             })}
-          </InspectorCompositionFrame>
+          </div>
           {selected && stageRectFromRegion(selected, sourceSize, composition) && (
             <div className="pointer-events-none absolute inset-0 z-10">
               {(["nw", "ne", "se", "sw"] as const).map((h) => (
@@ -293,16 +347,14 @@ export function BlurRegionsPanel({
               ))}
             </div>
           )}
-        </div>
+        </div>, canvasHost
       )}
       {selected && duration > 0 ? (
         <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-2">
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span>{selected.kind === "highlight" ? t("blur.highlight") : t("blur.mask")}</span>
-            <span className="tabular-nums">
-              {selected.start.toFixed(2)}s – {selected.end.toFixed(2)}s
-            </span>
           </div>
+          <ClipTimingDisplay start={selected.start} end={selected.end} />
           <label className="block text-[11px] text-muted-foreground">
             {t("look.start")}
             <input

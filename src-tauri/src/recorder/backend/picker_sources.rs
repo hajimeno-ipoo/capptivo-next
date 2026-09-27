@@ -29,6 +29,7 @@ const BLOCKED_OWNER_BUNDLES: &[&str] = &[
 pub struct PickerWindow {
     pub id: u32,
     pub title: String,
+    pub app_name: Option<String>,
     pub width: u32,
     pub height: u32,
 }
@@ -133,6 +134,11 @@ pub fn recordable_windows() -> AppResult<Vec<PickerWindow>> {
         .into_iter()
         .filter(|w| is_recordable_window(w, own_pid))
         .map(|w| {
+            let window_title = w.get_title().unwrap_or_default();
+            let app_name = w
+                .get_owning_application()
+                .and_then(|o| o.get_application_name())
+                .filter(|name| !name.trim().is_empty());
             let frame = w.get_frame();
             let rect = CaptureRect {
                 x: frame.origin.x,
@@ -145,7 +151,8 @@ pub fn recordable_windows() -> AppResult<Vec<PickerWindow>> {
                 .unwrap_or((0, 0));
             PickerWindow {
                 id: w.get_window_id(),
-                title: window_label(&w),
+                title: window_label(&window_title, app_name.as_deref().unwrap_or("")),
+                app_name,
                 width,
                 height,
             }
@@ -302,16 +309,11 @@ fn is_capturable_window_layer(layer: u32) -> bool {
     layer < DOCK_WINDOW_LAYER
 }
 
-fn window_label(w: &UnsafeSCWindow) -> String {
-    let title = w.get_title().unwrap_or_default();
-    let app = w
-        .get_owning_application()
-        .and_then(|o| o.get_application_name())
-        .unwrap_or_default();
+fn window_label(title: &str, app: &str) -> String {
     if title.trim().is_empty() {
-        app
+        app.to_owned()
     } else if app.is_empty() || title.contains(&app) {
-        title
+        title.to_owned()
     } else {
         format!("{app} — {title}")
     }

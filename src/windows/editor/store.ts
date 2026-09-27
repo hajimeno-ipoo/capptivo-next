@@ -96,6 +96,8 @@ import {
   createDefaultPerspectiveTimelineFragment,
   createDefaultZoomFragment,
   createSuggestedZoomFragment,
+  DEFAULT_ZOOM_EASE_IN_SEC,
+  DEFAULT_ZOOM_EASE_OUT_SEC,
   HISTORY_LIMIT,
   MIN_SEGMENT_LENGTH,
 } from "./lib/timelineMath";
@@ -124,6 +126,7 @@ export { mediaUrl };
 export interface CustomBackgroundInfo {
   id: string;
   fileName: string;
+  isMacWallpaper: boolean;
 }
 
 export function customBackgroundPreset(info: CustomBackgroundInfo): BackgroundPreset {
@@ -134,6 +137,7 @@ export function customBackgroundPreset(info: CustomBackgroundInfo): BackgroundPr
     type: "image",
     src,
     previewCss: `url("${src}")`,
+    isMacWallpaper: info.isMacWallpaper,
   };
 }
 
@@ -440,6 +444,7 @@ interface EditorStore {
   /** Clear the composition background (clicking the active swatch again). */
   clearBackground: () => void;
   uploadCustomBackground: (file: File) => Promise<void>;
+  importMacWallpaper: (id: string) => Promise<void>;
   deleteCustomBackground: (id: string) => Promise<void>;
   setCustomColor: (color: string) => void;
   applyCustomGradient: (angle: number, start: string, end: string) => void;
@@ -567,7 +572,7 @@ function scheduleProxyWaitTimeout(projectId: string, get: () => EditorStore): vo
   }, PROXY_WAIT_TIMEOUT_MS);
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     // media:// is cross-origin on WKWebView; CORS is advertised by the protocol.
@@ -1061,7 +1066,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
           scheduleAutoSuggestZooms(get);
         }
       });
-      void commands.ensureProxy(projectId).then((info) => {
+      // Screenshots use ensureProxy only for the original image dimensions.
+      // Recording previews decode screen.mp4 directly; creating a downscaled
+      // proxy here would waste time and storage without being displayed.
+      if (screenshot) void commands.ensureProxy(projectId).then((info) => {
         if (get().projectId !== projectId) return;
         const patch: Partial<EditorStore> = {};
         if (info.width > 0 && info.height > 0) {
@@ -1298,6 +1306,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       }));
       get().selectBackground(preset);
     });
+  },
+
+  async importMacWallpaper(id) {
+    const saved = await commands.importMacWallpaper(id);
+    const preset = customBackgroundPreset(saved);
+    set((s) => ({
+      customImageBackgrounds: [
+        preset,
+        ...s.customImageBackgrounds.filter((item) => item.id !== preset.id),
+      ],
+    }));
+    get().selectBackground(preset);
   },
 
   async deleteCustomBackground(id) {
@@ -1922,7 +1942,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const clicks = recordingMetadata?.cursorClickSamples ?? [];
     const result = buildClickZoomSuggestions({
       clicks,
+      pressIntervals: recordingMetadata?.cursorPressIntervals,
       duration,
+      easeInSec: DEFAULT_ZOOM_EASE_IN_SEC,
+      easeOutSec: DEFAULT_ZOOM_EASE_OUT_SEC,
       reservedSpans: force
         ? zoomFragments.map((z) => ({ start: z.start, end: z.end }))
         : [],
@@ -1934,12 +1957,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     const before = snapshotOf(get());
     const added = result.suggestions.map((span) =>
-      createSuggestedZoomFragment(
-        span.start,
-        span.end,
-        recordingMetadata,
-        AUTO_ZOOM_TARGET_SCALE,
-      ),
+      ({
+        ...createSuggestedZoomFragment(
+          span.start,
+          span.end,
+          recordingMetadata,
+          AUTO_ZOOM_TARGET_SCALE,
+        ),
+        easeIn: span.easeIn,
+        easeOut: span.easeOut,
+      }),
     );
 
     invalidateZoomKeyframesCache();

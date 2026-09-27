@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -40,7 +33,46 @@ const CLICK_EFFECT_LABEL_KEYS: Record<CursorClickEffectId, TranslationKey> = {
   ripple: "cursor.clickEffect.ripple",
   spotlight: "cursor.clickEffect.spotlight",
   echo: "cursor.clickEffect.echo",
+  flash: "cursor.clickEffect.flash",
 };
+
+function ClickEffectPreview({ effect }: { effect: CursorClickEffectId }) {
+  return (
+    <svg viewBox="0 0 64 44" className="h-11 w-16" aria-hidden="true">
+      {effect === "none" ? (
+        <>
+          <circle cx="32" cy="22" r="13" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.45" />
+          <path d="M23 31 41 13" stroke="currentColor" strokeWidth="2" opacity="0.65" />
+        </>
+      ) : effect === "ripple" ? (
+        <>
+          <circle cx="32" cy="22" r="16" fill="none" stroke="#06b6d4" strokeWidth="3" />
+          <circle cx="32" cy="22" r="3" fill="#06b6d4" />
+        </>
+      ) : effect === "spotlight" ? (
+        <>
+          <circle cx="32" cy="22" r="18" fill="#f59e0b" opacity="0.2" />
+          <circle cx="32" cy="22" r="12" fill="#f59e0b" opacity="0.4" />
+          <circle cx="32" cy="22" r="5" fill="#f59e0b" opacity="0.9" />
+        </>
+      ) : effect === "echo" ? (
+        <>
+          <circle cx="32" cy="22" r="6" fill="none" stroke="#a855f7" strokeWidth="2" />
+          <circle cx="32" cy="22" r="12" fill="none" stroke="#a855f7" strokeWidth="2" opacity="0.75" />
+          <circle cx="32" cy="22" r="18" fill="none" stroke="#a855f7" strokeWidth="2" opacity="0.5" />
+        </>
+      ) : (
+        <>
+          <rect x="7" y="5" width="50" height="34" rx="5" fill="#111827" opacity="0.85" />
+          <circle cx="32" cy="22" r="15" fill="#fff7d6" opacity="0.3" />
+          <circle cx="32" cy="22" r="8" fill="#fff9e8" opacity="0.8" />
+          <circle cx="32" cy="22" r="9" fill="none" stroke="#ffffff" strokeWidth="1.5" />
+          <circle cx="32" cy="22" r="3" fill="#ffffff" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 function StylePreview({ style }: { style: CursorStyleId }) {
   const [src, setSrc] = useState(() => cursorStylePreviewUrl(style));
@@ -262,24 +294,26 @@ export function CursorPanel({ visible = true }: { visible?: boolean }) {
 
       <section className="space-y-2">
         <SectionLabel>{t("cursor.clickEffect")}</SectionLabel>
-        <Select
-          value={cursorSettings.clickEffect}
-          onValueChange={(v) =>
-            setCursorSettings({ clickEffect: v as CursorClickEffectId })
-          }
-          disabled={!hasTrack || !cursorSettings.showCursor}
-        >
-          <SelectTrigger className="h-9 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CURSOR_CLICK_EFFECT_IDS.map((id) => (
-              <SelectItem key={id} value={id}>
-                {t(CLICK_EFFECT_LABEL_KEYS[id])}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("cursor.clickEffect")}>
+          {CURSOR_CLICK_EFFECT_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={cursorSettings.clickEffect === id}
+              disabled={!hasTrack || !cursorSettings.showCursor}
+              onClick={() => setCursorSettings({ clickEffect: id })}
+              className={cn(
+                "flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                cursorSettings.clickEffect === id
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border bg-background text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <ClickEffectPreview effect={id} />
+              <span className="whitespace-nowrap">{t(CLICK_EFFECT_LABEL_KEYS[id])}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="space-y-3">

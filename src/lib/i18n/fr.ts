@@ -2,7 +2,7 @@ import type { TranslationKey } from "./en";
 
 /** French. Typed against `TranslationKey` so a missing key is a compile error. */
 export const fr: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "Enregistrement sans titre",
 
   "titleBar.export": "Exporter",
@@ -16,6 +16,13 @@ export const fr: Record<TranslationKey, string> = {
   "feedback.x": "X",
   "feedback.reportIssue": "Signaler un problème / envoyer un retour",
   "app.loading": "Chargement…",
+
+  "editor.mode.canvas": "Canevas",
+  "editor.mode.time": "Édition temporelle",
+  "editor.timeline.open": "Ouvrir la chronologie",
+  "editor.timeline.close": "Fermer la chronologie",
+  "editor.imageEdit": "Modifier l’image",
+  "editor.tools": "Outils de modification",
 
   "panel.look.title": "Apparence",
   "panel.look.subtitle": "Arrière-plan et composition",
@@ -114,11 +121,18 @@ export const fr: Record<TranslationKey, string> = {
   "bg.image": "Image",
   "bg.gradient": "Dégradé",
   "bg.color": "Couleur",
+  "bg.macWallpaper": "Fonds d’écran Mac",
+  "bg.macWallpaper.empty": "Aucun fond d’écran Mac installé n’est disponible.",
+  "bg.macWallpaper.loadFailed": "Impossible de charger les fonds d’écran Mac.",
+  "bg.macWallpaper.importFailed": "Impossible d’utiliser ce fond d’écran Mac.",
   "look.custom": "Personnalisé",
   "look.uploadImage": "Importer une image",
   "look.deleteImage": "Supprimer l'image",
   "look.start": "Début",
   "look.end": "Fin",
+  "clip.duration": "Durée",
+  "clip.fragment.label": "Fragment",
+  "clip.fragment.placeholder": "Sélectionner un fragment",
   "look.angle": "Angle",
   "look.padding": "Marge de la vidéo (px)",
   "look.padding.hint":
@@ -250,6 +264,7 @@ export const fr: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "Ondulation",
   "cursor.clickEffect.spotlight": "Halo",
   "cursor.clickEffect.echo": "Écho",
+  "cursor.clickEffect.flash": "Flash",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -326,9 +341,9 @@ export const fr: Record<TranslationKey, string> = {
   "updater.install": "Mettre à jour",
   "updater.dismiss": "Fermer",
   "updater.installing": "Installation…",
-  "updater.installing.detail": "Téléchargement et installation de la version {version}. Capptivo va redémarrer.",
+  "updater.installing.detail": "Téléchargement et installation de la version {version}. Capptivo_Next va redémarrer.",
   "updater.checking": "Recherche de mises à jour…",
-  "updater.upToDate": "Capptivo est à jour.",
+  "updater.upToDate": "Capptivo_Next est à jour.",
   "updater.busyRecording": "Terminez ou arrêtez l’enregistrement avant de mettre à jour.",
   "updater.error": "Impossible de vérifier les mises à jour.",
 
@@ -364,10 +379,16 @@ export const fr: Record<TranslationKey, string> = {
 
   "recorder.drag": "Déplacer",
   "recorder.recordings": "Enregistrements",
+  "recorder.library": "Bibliothèque",
   "recorder.close": "Fermer",
   "recorder.record": "Enregistrer",
+  "recorder.screenRecording": "Enregistrement d’écran",
   "recorder.screenshot": "Capture d’écran",
+  "recorder.takeScreenshot": "Capturer",
   "recorder.captureKind": "Type de capture",
+  "recorder.captureTarget": "Source de capture",
+  "recorder.inputs": "Entrées",
+  "recorder.mode.windowScreenshotNote": "Une capture d’une seule fenêtre ne comprend ni la caméra ni les annotations en direct.",
   "recorder.mode.display": "Écran",
   "recorder.mode.window": "Fenêtre",
   "recorder.mode.area": "Zone",
@@ -381,9 +402,9 @@ export const fr: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "Connectez un iPhone ou iPad avec un câble, déverrouillez-le et appuyez sur Trust.",
   "recorder.error.screenPermission":
-    "Autorisez Capptivo dans Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran, puis quittez et rouvrez l'app.",
+    "Autorisez Capptivo_Next dans Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran, puis quittez et rouvrez l'app.",
   "recorder.error.cameraPermission":
-    "Autorisez Capptivo dans Réglages Système → Confidentialité et sécurité → Caméra pour enregistrer un appareil.",
+    "Autorisez Capptivo_Next dans Réglages Système → Confidentialité et sécurité → Caméra pour enregistrer un appareil.",
   "recorder.error.noDevice":
     "Connectez un iPhone ou iPad avec un câble, puis sélectionnez-le.",
   "recorder.error.noArea": "Faites d'abord glisser pour sélectionner une zone.",
@@ -399,6 +420,7 @@ export const fr: Record<TranslationKey, string> = {
   "recorder.audio": "Audio",
   "recorder.audio.off": "Pas d'audio",
   "recorder.audio.system": "Audio système",
+  "recorder.audio.device": "Audio de l’appareil",
   "recorder.audio.none": "Pas d'audio système",
   "recorder.sources.displays": "Écrans",
   "recorder.sources.windows": "Fenêtres",

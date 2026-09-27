@@ -1,4 +1,4 @@
-/** Selfcheck: screen preview URL prefers proxy. */
+/** Selfcheck: screen preview URL prefers the original recording. */
 import { screenPreviewUrl } from "./screenPreviewUrl.ts";
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -6,12 +6,12 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 assert(
-  screenPreviewUrl("media://proxy", "media://screen") === "media://proxy",
-  "proxy wins when present",
+  screenPreviewUrl("media://proxy", "media://screen") === "media://screen",
+  "original wins when present",
 );
 assert(
-  screenPreviewUrl(null, "media://screen") === "media://screen",
-  "falls back to original",
+  screenPreviewUrl("media://proxy", null) === "media://proxy",
+  "falls back to proxy when original is missing",
 );
 assert(screenPreviewUrl(null, null) === null, "both missing → null");
 

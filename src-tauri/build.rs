@@ -80,6 +80,8 @@ fn main() {
         "save_custom_background",
         "list_custom_backgrounds",
         "delete_custom_background",
+        "list_mac_wallpapers",
+        "import_mac_wallpaper",
         // export
         "ensure_seekable_recording",
         "check_export_disk_space",

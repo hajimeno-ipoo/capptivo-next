@@ -6,6 +6,7 @@ export interface CaptureSource {
   id: string;
   kind: CaptureSourceKind;
   title: string;
+  appName: string | null;
   width: number;
   height: number;
   isPrimary: boolean;

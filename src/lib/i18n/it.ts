@@ -2,9 +2,16 @@ import type { TranslationKey } from "./en";
 
 /** Italian. Typed against `TranslationKey` so a missing key is a compile error. */
 export const it: Record<TranslationKey, string> = {
-  "app.name": "Capptivo",
+  "app.name": "Capptivo_Next",
   "app.untitled": "Registrazione senza titolo",
   "app.loading": "Caricamento…",
+
+  "editor.mode.canvas": "Tela",
+  "editor.mode.time": "Modifica temporale",
+  "editor.timeline.open": "Apri la timeline",
+  "editor.timeline.close": "Chiudi la timeline",
+  "editor.imageEdit": "Modifica immagine",
+  "editor.tools": "Strumenti di modifica",
 
   "titleBar.export": "Esporta",
 
@@ -113,11 +120,18 @@ export const it: Record<TranslationKey, string> = {
   "bg.image": "Immagine",
   "bg.gradient": "Gradiente",
   "bg.color": "Colore",
+  "bg.macWallpaper": "Sfondi Mac",
+  "bg.macWallpaper.empty": "Non ci sono sfondi Mac installati disponibili.",
+  "bg.macWallpaper.loadFailed": "Impossibile caricare gli sfondi Mac.",
+  "bg.macWallpaper.importFailed": "Impossibile usare questo sfondo Mac.",
   "look.custom": "Personalizzato",
   "look.uploadImage": "Carica immagine",
   "look.deleteImage": "Elimina immagine",
   "look.start": "Inizio",
   "look.end": "Fine",
+  "clip.duration": "Durata",
+  "clip.fragment.label": "Frammento",
+  "clip.fragment.placeholder": "Seleziona un frammento",
   "look.angle": "Angolo",
   "look.padding": "Margine video (px)",
   "look.padding.hint":
@@ -249,6 +263,7 @@ export const it: Record<TranslationKey, string> = {
   "cursor.clickEffect.ripple": "Onda",
   "cursor.clickEffect.spotlight": "Faretto",
   "cursor.clickEffect.echo": "Eco",
+  "cursor.clickEffect.flash": "Lampo",
   "cursor.clickSound": "Click sound",
   "cursor.clickSound.hint": "Play a short generated sound at each recorded click.",
   "cursor.clickVolume": "Click volume",
@@ -324,9 +339,9 @@ export const it: Record<TranslationKey, string> = {
   "updater.install": "Aggiorna",
   "updater.dismiss": "Chiudi",
   "updater.installing": "Installazione aggiornamento…",
-  "updater.installing.detail": "Download e installazione della versione {version}. Capptivo si riavvierà.",
+  "updater.installing.detail": "Download e installazione della versione {version}. Capptivo_Next si riavvierà.",
   "updater.checking": "Controllo aggiornamenti…",
-  "updater.upToDate": "Capptivo è aggiornato.",
+  "updater.upToDate": "Capptivo_Next è aggiornato.",
   "updater.busyRecording": "Termina o interrompi la registrazione corrente prima di aggiornare.",
   "updater.error": "Impossibile controllare gli aggiornamenti.",
 
@@ -361,10 +376,16 @@ export const it: Record<TranslationKey, string> = {
 
   "recorder.drag": "Trascina",
   "recorder.recordings": "Registrazioni",
+  "recorder.library": "Libreria",
   "recorder.close": "Chiudi",
   "recorder.record": "Registra",
+  "recorder.screenRecording": "Registrazione schermo",
   "recorder.screenshot": "Schermata",
+  "recorder.takeScreenshot": "Acquisisci",
   "recorder.captureKind": "Tipo di acquisizione",
+  "recorder.captureTarget": "Sorgente di acquisizione",
+  "recorder.inputs": "Ingressi",
+  "recorder.mode.windowScreenshotNote": "Uno screenshot di una sola finestra non include la fotocamera né le annotazioni in tempo reale.",
   "recorder.mode.display": "Schermo",
   "recorder.mode.window": "Finestra",
   "recorder.mode.area": "Area",
@@ -378,9 +399,9 @@ export const it: Record<TranslationKey, string> = {
   "recorder.devices.empty":
     "Collega un iPhone o iPad con un cavo, sbloccalo e tocca Trust.",
   "recorder.error.screenPermission":
-    "Consenti Capptivo in Impostazioni di Sistema → Privacy e sicurezza → Registrazione schermo, poi chiudi e riapri l'app.",
+    "Consenti Capptivo_Next in Impostazioni di Sistema → Privacy e sicurezza → Registrazione schermo, poi chiudi e riapri l'app.",
   "recorder.error.cameraPermission":
-    "Consenti Capptivo in Impostazioni di Sistema → Privacy e sicurezza → Fotocamera per registrare un dispositivo.",
+    "Consenti Capptivo_Next in Impostazioni di Sistema → Privacy e sicurezza → Fotocamera per registrare un dispositivo.",
   "recorder.error.noDevice":
     "Collega un iPhone o iPad con un cavo, poi selezionalo.",
   "recorder.error.noArea": "Trascina prima per selezionare un'area.",
@@ -396,6 +417,7 @@ export const it: Record<TranslationKey, string> = {
   "recorder.audio": "Audio",
   "recorder.audio.off": "Nessun audio",
   "recorder.audio.system": "Audio di sistema",
+  "recorder.audio.device": "Audio del dispositivo",
   "recorder.audio.none": "Nessun audio di sistema",
   "recorder.sources.displays": "Schermi",
   "recorder.sources.windows": "Finestre",

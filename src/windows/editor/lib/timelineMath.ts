@@ -15,6 +15,8 @@ export type { TimelineRulerTick } from "./timelineRuler";
 export const MIN_SEGMENT_LENGTH = 0.2;
 export const HISTORY_LIMIT = 120;
 export const ZOOM_DEFAULT_DURATION = 3;
+export const DEFAULT_ZOOM_EASE_IN_SEC = 1;
+export const DEFAULT_ZOOM_EASE_OUT_SEC = 1;
 export const PERSPECTIVE_DEFAULT_DURATION = 3;
 
 export function computeDefaultZoomRange(
@@ -100,8 +102,8 @@ export function createDefaultZoomFragment(
     shrinkFaceCamDuringZoom: true,
     faceCamZoomPresenceScale: getFaceCamZoomPresenceMinScale(null),
     targetScale: 1.35,
-    easeIn: 1,
-    easeOut: 1,
+    easeIn: DEFAULT_ZOOM_EASE_IN_SEC,
+    easeOut: DEFAULT_ZOOM_EASE_OUT_SEC,
     damping: 4,
     fixedRect:
       mode === "fixed-rect"

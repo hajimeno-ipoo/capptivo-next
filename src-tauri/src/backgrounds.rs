@@ -18,6 +18,7 @@ pub struct CustomBackground {
     /// Stable id (= file stem). Persisted in editor state / presets.
     pub id: String,
     pub file_name: String,
+    pub is_mac_wallpaper: bool,
 }
 
 pub fn dir(app_data: &Path) -> PathBuf {
@@ -25,6 +26,13 @@ pub fn dir(app_data: &Path) -> PathBuf {
 }
 
 pub fn save(app_data: &Path, bytes: &[u8], ext: &str) -> AppResult<CustomBackground> {
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    save_with_id(app_data, bytes, ext, &id)
+}
+
+/// Save a background with a stable ID (used for an imported Mac wallpaper).
+pub fn save_with_id(app_data: &Path, bytes: &[u8], ext: &str, id: &str) -> AppResult<CustomBackground> {
+    validate_id(id)?;
     if bytes.is_empty() {
         return Err(AppError::Other("empty background image".into()));
     }
@@ -38,16 +46,26 @@ pub fn save(app_data: &Path, bytes: &[u8], ext: &str) -> AppResult<CustomBackgro
     let dir = dir(app_data);
     fs::create_dir_all(&dir)?;
 
-    let id = uuid::Uuid::new_v4().simple().to_string();
     let file_name = format!("{id}.{ext}");
     let path = dir.join(&file_name);
+    if path.is_file() {
+        return Ok(CustomBackground {
+            id: id.to_string(),
+            file_name,
+            is_mac_wallpaper: false,
+        });
+    }
     // Atomic-ish: write tmp then rename so a crash mid-write doesn't leave a
     // half file that `list` would happily serve.
-    let tmp = dir.join(format!("{id}.tmp"));
+    let tmp = dir.join(format!("{id}-{}.tmp", uuid::Uuid::new_v4().simple()));
     fs::write(&tmp, bytes)?;
     fs::rename(&tmp, &path)?;
 
-    Ok(CustomBackground { id, file_name })
+    Ok(CustomBackground {
+        id: id.to_string(),
+        file_name,
+        is_mac_wallpaper: false,
+    })
 }
 
 pub fn list(app_data: &Path) -> AppResult<Vec<CustomBackground>> {
@@ -75,6 +93,7 @@ pub fn list(app_data: &Path) -> AppResult<Vec<CustomBackground>> {
         out.push((modified, CustomBackground {
             id,
             file_name: file_name.to_string(),
+            is_mac_wallpaper: false,
         }));
     }
     // Newest first so a just-uploaded swatch sits near the +.
