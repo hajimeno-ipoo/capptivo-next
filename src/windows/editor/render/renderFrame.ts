@@ -69,6 +69,8 @@ export interface RenderFrameInputs {
   /** Still images may inset the original even with a plain-color backdrop. */
   forcePaddingOnMatch?: boolean;
   sourceVideoSize?: { width: number; height: number } | null;
+  /** Screenshot corner-radius values are final image pixels, not stage units. */
+  stillImage?: boolean;
 }
 
 /**

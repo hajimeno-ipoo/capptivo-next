@@ -129,6 +129,7 @@ export const commands = {
   finishCameraFile: () => invoke<string | null>("finish_camera_file"),
   showAnnotationOverlay: () => invoke<void>("show_annotation_overlay"),
   hideAnnotationOverlay: () => invoke<void>("hide_annotation_overlay"),
+  annotationOverlayVisible: () => invoke<boolean>("annotation_overlay_visible"),
   /** Pause/resume native multi-monitor follow while a drawing tool is armed. */
   setAnnotationDisplayFollow: (follow: boolean) =>
     invoke<void>("set_annotation_display_follow", { follow }),

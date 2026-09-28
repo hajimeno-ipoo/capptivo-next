@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { getCompositionLayout, PERSPECTIVE_PIVOT_POINTS, perspectiveEditPreviewTime, type PerspectiveFragment, type PerspectivePivot } from "@/engine";
 
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
@@ -36,12 +36,14 @@ import {
   type BackgroundType,
 } from "../lib/backgroundPresets";
 import {
+  cornerRadiusInStage,
   maxDevicePaddingFor,
   PERSPECTIVE_LIMITS,
   resolveRecordingLayoutParams,
 } from "../lib/composition";
 import { useStageDimensions } from "../lib/useStageDimensions";
 import { formatTimelineTime } from "../lib/timelineMath";
+import { DEFAULT_SCREENSHOT_EDITS, screenshotStage } from "../screenshotModel";
 import { FieldLabel, SectionLabel } from "./ui";
 import { ScreenContentCropPanel } from "./ScreenContentCropPanel";
 import { BlurRegionsPanel } from "./BlurRegionsPanel";
@@ -105,10 +107,30 @@ export function LookPanel({ visible = true, section = "background", canvasHost, 
   );
   const perspectiveFragments = useEditorStore((s) => s.perspectiveFragments);
   const selectPerspectiveFragment = useEditorStore((s) => s.selectPerspectiveFragment);
+  const deleteSelected = useEditorStore((s) => s.deleteSelected);
   const updateSelectedPerspectiveFragment = useEditorStore(
     (s) => s.updateSelectedPerspectiveFragment,
   );
+  const screenshotPerspectiveId = isScreenshot ? perspectiveFragments[0]?.id : undefined;
+  useEffect(() => {
+    if (visible && section === "perspective" && screenshotPerspectiveId && !selectedPerspectiveFragment) {
+      selectPerspectiveFragment(screenshotPerspectiveId);
+    }
+  }, [visible, section, screenshotPerspectiveId, selectedPerspectiveFragment, selectPerspectiveFragment]);
   const stageDimensions = useStageDimensions();
+  const screenshotOutput = isScreenshot && sourceVideoSize
+    ? screenshotStage(
+        sourceVideoSize,
+        {
+          ...DEFAULT_SCREENSHOT_EDITS,
+          aspectRatioPresetId,
+          look,
+          crop: screenContentCrop ?? DEFAULT_SCREENSHOT_EDITS.crop,
+        },
+        selectedBackground !== null,
+        backgroundType,
+      ).output
+    : null;
   const layoutParams = resolveRecordingLayoutParams({
     presetId: aspectRatioPresetId,
     sourceAspect,
@@ -128,7 +150,9 @@ export function LookPanel({ visible = true, section = "background", canvasHost, 
     ).video,
     screenContentCrop,
     background: selectedBackground,
-    cornerRadius: look.cornerRadius,
+    cornerRadius: screenshotOutput
+      ? cornerRadiusInStage(look.cornerRadius, stageDimensions.width, screenshotOutput.width)
+      : look.cornerRadius,
   };
   const sortedPerspectiveFragments = [...perspectiveFragments].sort(
     (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
@@ -232,17 +256,25 @@ export function LookPanel({ visible = true, section = "background", canvasHost, 
           </Select>
         </div>
       )}
-      {section === "perspective" && !selectedPerspectiveFragment && (
+      {section === "perspective" && (isScreenshot ? sortedPerspectiveFragments.length === 0 : !selectedPerspectiveFragment) && (
         <Button type="button" variant="secondary" size="sm" onClick={() => useEditorStore.getState().addFragment("perspective")}>
           {t("timeline.addFragment")} · {t("look.threeD")}
         </Button>
       )}
       {section === "perspective" && selectedPerspectiveFragment && (
-        <ThreeDPerspective
-          fragment={selectedPerspectiveFragment}
-          updateFragment={updateSelectedPerspectiveFragment}
-          stageWidth={stageDimensions.width}
-        />
+        <>
+          {isScreenshot && (
+            <Button type="button" variant="outline" size="sm" className="w-full gap-2 text-destructive hover:text-destructive" onClick={deleteSelected}>
+              <Trash2 className="size-4" aria-hidden="true" />
+              {t("timeline.deleteSelected")}
+            </Button>
+          )}
+          <ThreeDPerspective
+            fragment={selectedPerspectiveFragment}
+            updateFragment={updateSelectedPerspectiveFragment}
+            stageWidth={stageDimensions.width}
+          />
+        </>
       )}
       {section === "background" && selectedBackground && <BackgroundEffects />}
     </div>
@@ -728,12 +760,17 @@ function LookSliders() {
         />
       </div>
       <div className="space-y-2">
-        <FieldLabelWithHint
-          htmlFor="corner-radius"
-          hint={t("look.radius.hint")}
-        >
-          {t("look.radius")}
-        </FieldLabelWithHint>
+        <div className="flex items-center justify-between gap-2">
+          <FieldLabelWithHint
+            htmlFor="corner-radius"
+            hint={t("look.radius.hint")}
+          >
+            {t("look.radius")}
+          </FieldLabelWithHint>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {Math.round(look.cornerRadius)} px
+          </span>
+        </div>
         <Slider
           id="corner-radius"
           min={0}
@@ -986,94 +1023,49 @@ function ThreeDPerspective({
 
   return (
     <div className="space-y-4 border-t border-border/60 pt-4">
-      <div className="space-y-1">
-        <SectionLabel>{t("look.threeD")}</SectionLabel>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {t("look.threeD.hint")}
-        </p>
-      </div>
+      <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        {t("look.threeD.hint")}
+      </p>
 
       <ClipTimingDisplay start={fragment.start} end={fragment.end} />
 
-      <div className="grid grid-cols-6 gap-1.5">
-        {PERSPECTIVE_PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            title={preset.labelKey
+      <div className="space-y-2">
+        <FieldLabel>{t("presets.label")}</FieldLabel>
+        <div className="grid grid-cols-3 gap-2">
+          {PERSPECTIVE_PRESETS.map((preset) => {
+            const label = preset.labelKey
               ? t(preset.labelKey)
-              : `${t(preset.axis === "tiltX" ? "look.threeD.tiltX" : "look.threeD.tiltY")} ${preset.axis === "tiltX" ? preset.values.tiltX : preset.values.tiltY}°`}
-            aria-label={preset.labelKey
-              ? t(preset.labelKey)
-              : `${t(preset.axis === "tiltX" ? "look.threeD.tiltX" : "look.threeD.tiltY")} ${preset.axis === "tiltX" ? preset.values.tiltX : preset.values.tiltY}°`}
-            aria-pressed={
-              fragment.tiltX === preset.values.tiltX &&
-              fragment.tiltY === preset.values.tiltY &&
-              fragment.tiltZ === preset.values.tiltZ &&
-              fragment.perspectiveDistance === preset.values.perspectiveDistance
-            }
-            onClick={() => applyPreset(preset.values)}
-            className={cn(
-              "flex h-10 items-center justify-center rounded-md border transition-colors",
-              fragment.tiltX === preset.values.tiltX &&
-                fragment.tiltY === preset.values.tiltY &&
-                fragment.tiltZ === preset.values.tiltZ &&
-                fragment.perspectiveDistance === preset.values.perspectiveDistance
-                ? selectedRing
-                : idleRing,
-            )}
-          >
-            <PresetGlyph values={preset.values} />
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-3">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            {(["tiltX", "tiltY", "tiltZ"] as const).map((axis) => (
-              <PerspectiveNumberField
-                key={axis}
-                axis={axis}
-                label={t(`look.threeD.${axis}`)}
-                value={fragment[axis]}
-                onChange={(number) =>
-                  updateFragment((current) => ({ ...current, [axis]: clampAngle(number, axis) }))
-                }
-              />
-            ))}
-          </div>
-          <FieldLabel htmlFor="three-d-reflection">{t("look.threeD.reflection")}</FieldLabel>
-          <Slider
-            id="three-d-reflection"
-            min={0}
-            max={100}
-            step={1}
-            value={[fragment.reflectionStrength]}
-            onValueChange={([value]) =>
-              updateFragment((current) => ({ ...current, reflectionStrength: value ?? 0 }))
-            }
-          />
-          <div className="flex gap-1">
-            {(["soft", "sharp", "dots"] as const).map((style) => (
+              : `${t(preset.axis === "tiltX" ? "look.threeD.tiltX" : "look.threeD.tiltY")} ${preset.axis === "tiltX" ? preset.values.tiltX : preset.values.tiltY}°`;
+            const selected = fragment.tiltX === preset.values.tiltX
+              && fragment.tiltY === preset.values.tiltY
+              && fragment.tiltZ === preset.values.tiltZ
+              && fragment.perspectiveDistance === preset.values.perspectiveDistance;
+            return (
               <button
-                key={style}
+                key={preset.id}
                 type="button"
-                title={t(`look.threeD.${style}`)}
-                aria-label={t(`look.threeD.${style}`)}
-                aria-pressed={fragment.reflectionStyle === style}
-                onClick={() => updateFragment((current) => ({ ...current, reflectionStyle: style }))}
+                title={label}
+                aria-label={label}
+                aria-pressed={selected}
+                onClick={() => applyPreset(preset.values)}
                 className={cn(
-                  "flex h-8 flex-1 items-center justify-center rounded-md border text-xs",
-                  fragment.reflectionStyle === style ? selectedRing : idleRing,
+                  "flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  selected
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background hover:border-primary/40 hover:bg-muted/50",
                 )}
               >
-                {style === "soft" ? "◐" : style === "sharp" ? "◩" : "⠿"}
+                <PresetGlyph values={preset.values} />
+                <span className="text-[11px] font-medium leading-tight">{label}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-        <div className="space-y-1">
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-3 max-[620px]:grid-cols-1">
+        <div className="space-y-2">
+          <FieldLabel>{t("look.threeD.drag")}</FieldLabel>
           <div
             ref={previewRef}
             role="group"
@@ -1083,7 +1075,7 @@ function ThreeDPerspective({
             onPointerUp={() => { drag.current = null; }}
             onPointerCancel={() => { drag.current = null; }}
             onLostPointerCapture={() => { drag.current = null; }}
-            className="relative min-h-35 overflow-hidden rounded-lg border border-border bg-muted/50 touch-none"
+            className="relative h-48 overflow-hidden rounded-xl border border-border bg-muted/50 touch-none"
           >
             <svg ref={previewSvgRef} viewBox="0 0 200 150" className="h-full w-full">
               <defs>
@@ -1123,7 +1115,7 @@ function ThreeDPerspective({
                   updateFragment((current) => ({ ...current, tiltZ: clampAngle(current.tiltZ + direction * step, "tiltZ") }));
                 }}
               >
-                <path d={zArcPath} fill="none" stroke="currentColor" strokeWidth="12" opacity="0" />
+                <path d={zArcPath} fill="none" stroke="currentColor" strokeWidth="16" opacity="0" />
                 <path d={zArcPath} fill="none" stroke="currentColor" strokeWidth="2.5" pointerEvents="none" />
                 <circle cx={zIndicator.x} cy={zIndicator.y} r="4" fill="currentColor" pointerEvents="none" />
               </g>
@@ -1146,7 +1138,7 @@ function ThreeDPerspective({
                   }));
                 }}
               >
-                <circle cx={knob.x} cy={knob.y} r="11" fill="transparent" />
+                <circle cx={knob.x} cy={knob.y} r="14" fill="transparent" />
                 <circle cx={knob.x} cy={knob.y} r="7" fill="white" stroke="currentColor" strokeWidth="1.5" pointerEvents="none" />
               </g>
               {PERSPECTIVE_PIVOT_POINTS.map(({ id }) => {
@@ -1168,7 +1160,7 @@ function ThreeDPerspective({
                       updateFragment((current) => ({ ...current, pivot: id }));
                     }}
                   >
-                    <circle cx={x} cy={y} r="11" fill="transparent" />
+                    <circle cx={x} cy={y} r="14" fill="transparent" />
                     {selectedHandle === id && <circle cx={x} cy={y} r="9" fill="none" stroke="currentColor" strokeWidth="1.5" pointerEvents="none" />}
                     <circle
                       cx={x}
@@ -1184,34 +1176,95 @@ function ThreeDPerspective({
               })}
             </svg>
           </div>
-          <div aria-hidden="true" className="flex justify-between px-1 text-[10px] font-medium text-muted-foreground">
+          <div aria-hidden="true" className="flex justify-between px-1 text-xs text-muted-foreground">
             <span>X/Y ○</span>
             <span className="text-blue-500">Z ◌</span>
           </div>
         </div>
+        <div className="space-y-4 rounded-xl border border-border/70 bg-muted/20 p-3">
+          {(["tiltX", "tiltY", "tiltZ"] as const).map((axis) => (
+            <div key={axis} className="space-y-2">
+              <FieldLabel htmlFor={`three-d-${axis}`}>{t(`look.threeD.${axis}`)}</FieldLabel>
+              <div className="flex items-center gap-3">
+                <Slider
+                  id={`three-d-${axis}`}
+                  className="min-w-0 flex-1"
+                  min={PERSPECTIVE_LIMITS[axis].min}
+                  max={PERSPECTIVE_LIMITS[axis].max}
+                  step={1}
+                  value={[fragment[axis]]}
+                  onValueChange={([value]) =>
+                    updateFragment((current) => ({ ...current, [axis]: value ?? 0 }))
+                  }
+                />
+                <PerspectiveNumberField
+                  label={t(`look.threeD.${axis}`)}
+                  value={fragment[axis]}
+                  onChange={(number) =>
+                    updateFragment((current) => ({ ...current, [axis]: clampAngle(number, axis) }))
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-      <PerspectiveSlider
-        id="three-d-distance"
-        label={t("look.threeD.distance")}
-        value={fragment.perspectiveDistance}
-        min={PERSPECTIVE_LIMITS.perspectiveDistance.min}
-        max={PERSPECTIVE_LIMITS.perspectiveDistance.max}
-        step={50}
-        setValue={(value) =>
-          updateFragment((current) => ({ ...current, perspectiveDistance: value }))
-        }
-      />
+      <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <FieldLabel htmlFor="three-d-reflection">{t("look.threeD.reflection")}</FieldLabel>
+          <span className="text-xs tabular-nums text-muted-foreground">{fragment.reflectionStrength}%</span>
+        </div>
+        <Slider
+          id="three-d-reflection"
+          min={0}
+          max={100}
+          step={1}
+          value={[fragment.reflectionStrength]}
+          onValueChange={([value]) =>
+            updateFragment((current) => ({ ...current, reflectionStrength: value ?? 0 }))
+          }
+        />
+        <div className="grid grid-cols-3 gap-2">
+          {(["soft", "sharp", "dots"] as const).map((style) => (
+            <button
+              key={style}
+              type="button"
+              aria-pressed={fragment.reflectionStyle === style}
+              onClick={() => updateFragment((current) => ({ ...current, reflectionStyle: style }))}
+              className={cn(
+                "min-h-10 rounded-lg border px-1.5 py-2 text-center text-[11px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                fragment.reflectionStyle === style
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-background hover:border-primary/40 hover:bg-muted/50",
+              )}
+            >
+              {t(`look.threeD.${style}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+        <PerspectiveSlider
+          id="three-d-distance"
+          label={t("look.threeD.distance")}
+          value={fragment.perspectiveDistance}
+          min={PERSPECTIVE_LIMITS.perspectiveDistance.min}
+          max={PERSPECTIVE_LIMITS.perspectiveDistance.max}
+          step={50}
+          setValue={(value) =>
+            updateFragment((current) => ({ ...current, perspectiveDistance: value }))
+          }
+        />
+      </div>
     </div>
   );
 }
 
 function PerspectiveNumberField({
-  axis,
   label,
   value,
   onChange,
 }: {
-  axis: "tiltX" | "tiltY" | "tiltZ";
   label: string;
   value: number;
   onChange: (value: number) => void;
@@ -1223,14 +1276,16 @@ function PerspectiveNumberField({
   }, [editing, value]);
 
   return (
-    <label className="flex items-center gap-1 rounded-md border border-input px-2 py-1.5 text-xs">
-      <span className="text-muted-foreground" title={label}>{axis.slice(-1).toUpperCase()}</span>
+    <label className="flex h-9 w-[72px] shrink-0 items-center gap-1 rounded-lg border border-input bg-background px-2 text-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
       <input
         aria-label={label}
         type="text"
         inputMode="numeric"
         value={draft}
-        onFocus={() => setEditing(true)}
+        onFocus={(event) => {
+          setEditing(true);
+          event.currentTarget.select();
+        }}
         onChange={(event) => {
           const next = event.target.value;
           if (!/^-?\d*$/.test(next)) return;
@@ -1247,7 +1302,7 @@ function PerspectiveNumberField({
         }}
         className="min-w-0 w-full bg-transparent text-right tabular-nums outline-none"
       />
-      <span aria-hidden="true">°</span>
+      <span aria-hidden="true" className="text-muted-foreground">°</span>
     </label>
   );
 }
@@ -1257,7 +1312,7 @@ function PresetGlyph({ values }: { values: PerspectivePreset }) {
   const points = [corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft]
     .map(({ x, y }) => `${x},${y}`).join(" ");
   return (
-    <svg viewBox="-5 -5 34 28" className="size-6" aria-hidden="true">
+    <svg viewBox="-5 -5 34 28" className="size-7" aria-hidden="true">
       <polygon points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );

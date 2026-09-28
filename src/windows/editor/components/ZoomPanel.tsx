@@ -29,7 +29,8 @@ import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/settings";
 
-import { resolveRecordingLayoutParams, type VideoLayoutFrac } from "../lib/composition";
+import { cornerRadiusInStage, resolveRecordingLayoutParams, type VideoLayoutFrac } from "../lib/composition";
+import { DEFAULT_SCREENSHOT_EDITS, screenshotStage } from "../screenshotModel";
 import { screenPreviewUrl } from "../lib/screenPreviewUrl";
 import { useStageDimensions } from "../lib/useStageDimensions";
 import { cornerHandleOverlayStyle, CROP_HANDLE_SIZE, getHandleCursor } from "../lib/cropHandles";
@@ -137,6 +138,22 @@ export function ZoomPanel({
 
   const hasSelectedBackground = selectedBackground !== null;
   const hasImageBackground = hasSelectedBackground && backgroundType === "image";
+  const screenshotOutput = isScreenshot && sourceVideoSize
+    ? screenshotStage(
+        sourceVideoSize,
+        {
+          ...DEFAULT_SCREENSHOT_EDITS,
+          aspectRatioPresetId,
+          look,
+          crop: screenContentCrop ?? DEFAULT_SCREENSHOT_EDITS.crop,
+        },
+        hasSelectedBackground,
+        backgroundType,
+      ).output
+    : null;
+  const cornerRadius = screenshotOutput
+    ? cornerRadiusInStage(look.cornerRadius, compW, screenshotOutput.width)
+    : look.cornerRadius;
 
   const videoLayoutPct = useMemo(() => {
     const { sourceAspect: layoutAspect, devicePadding } = resolveRecordingLayoutParams({
@@ -160,8 +177,8 @@ export function ZoomPanel({
       top: frac.y * 100,
       width: frac.width * 100,
       height: frac.height * 100,
-      radiusX: Math.min(look.cornerRadius, video.width / 2) / video.width * 100,
-      radiusY: Math.min(look.cornerRadius, video.height / 2) / video.height * 100,
+      radiusX: Math.min(cornerRadius, video.width / 2) / video.width * 100,
+      radiusY: Math.min(cornerRadius, video.height / 2) / video.height * 100,
     };
   }, [
     aspectRatioPresetId,
@@ -170,7 +187,7 @@ export function ZoomPanel({
     hasSelectedBackground,
     hasImageBackground,
     look.devicePadding,
-    look.cornerRadius,
+    cornerRadius,
     screenContentCrop,
     compW,
     compH,

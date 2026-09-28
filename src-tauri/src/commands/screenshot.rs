@@ -54,7 +54,7 @@ pub fn capture_screenshot(
             return Err(AppError::InvalidSource(source_id));
         }
         // Hide only chrome. The camera bubble and full-screen ink remain visible
-        // for display/area shots, while the window filter captures only its window.
+        // and ScreenCaptureKit includes the ink through the shared capture filter.
         let recorder = app.get_webview_window(crate::windows::RECORDER_LABEL);
         let was_visible = recorder.as_ref().and_then(|w| w.is_visible().ok()).unwrap_or(false);
         if was_visible { recorder.as_ref().unwrap().hide().map_err(|e| AppError::Other(e.to_string()))?; }
@@ -65,7 +65,12 @@ pub fn capture_screenshot(
             if let Some(window_id) = source_id.strip_prefix("window:").and_then(|id| id.parse::<u32>().ok()) {
                 crate::recorder::backend::prepare_for_screenshot(window_id)?;
             }
-            let png = crate::recorder::backend::source_preview::capture_png(&source_id, crop, show_cursor)
+            let png = crate::recorder::backend::source_preview::capture_png(
+                &app,
+                &source_id,
+                crop,
+                show_cursor,
+            )
                 .ok_or_else(|| AppError::Other("screenshot capture failed or source disappeared".into()))?;
             state.store.create_screenshot(&png, source_id.clone()).map(|p| p.id)
         })();

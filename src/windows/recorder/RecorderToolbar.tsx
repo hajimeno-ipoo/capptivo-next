@@ -1017,7 +1017,7 @@ function SourceThumbnail({
       <img
         src={`data:image/png;base64,${source.thumbnail}`}
         alt=""
-        className={cn("bg-black object-contain", className)}
+        className={cn("bg-muted object-contain", className)}
       />
     );
   }

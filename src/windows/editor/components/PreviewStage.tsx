@@ -83,6 +83,7 @@ export function PreviewStage({
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   /** Requests a single paused-state repaint; assigned by the render effect. */
   const requestPaintRef = useRef<() => void>(() => {});
+  const paintImmediatelyRef = useRef<() => void>(() => {});
   const compositorRef = useRef<FrameCompositor | null>(null);
   const screenshotSourceRef = useRef<HTMLCanvasElement | null>(null);
   const screenshotImageRef = useRef<HTMLImageElement | null>(null);
@@ -412,6 +413,7 @@ export function PreviewStage({
             aspectRatioPresetId,
             backgroundType,
             sourceVideoSize,
+            stillImage: store.screenshotId !== null,
             zoomScale: zoom.scale,
             zoomFocus: { x: zoom.x, y: zoom.y },
             ...resolveZoomReactiveState(active, t),
@@ -545,8 +547,13 @@ export function PreviewStage({
       });
     };
     requestPaintRef.current = requestPaint;
+    paintImmediatelyRef.current = () => { paint(); };
     if (screenshotFrameRef) screenshotFrameRef.current = () => {
       if (!screenshotSourceRef.current) return null;
+      // Interactive padding changes defer the expensive output resize. Export
+      // must always use the exact current screenshot dimensions.
+      const output = outputSizeRef.current;
+      compositor?.resize(stageRef.current.width, stageRef.current.height, output.width, output.height);
       if (!paint()) return null;
       return compositor?.canvas instanceof HTMLCanvasElement ? compositor.canvas : null;
     };
@@ -725,6 +732,7 @@ export function PreviewStage({
       if (paintRaf) cancelAnimationFrame(paintRaf);
       unsubscribe();
       requestPaintRef.current = () => {};
+      paintImmediatelyRef.current = () => {};
       if (screenshotFrameRef) screenshotFrameRef.current = null;
       detachContextLoss?.();
       detachContextLoss = null;
@@ -736,11 +744,41 @@ export function PreviewStage({
     };
   }, [screenshotFrameRef, videoRef]);
 
+  const previousResizeContextRef = useRef({
+    stageWidth: stage.width,
+    stageHeight: stage.height,
+    screenshotId,
+  });
   useEffect(() => {
-    const comp = compositorRef.current;
-    if (!comp) return;
-    comp.resize(stage.width, stage.height, screenshotOutput.width, screenshotOutput.height);
-    requestPaintRef.current();
+    const previous = previousResizeContextRef.current;
+    previousResizeContextRef.current = {
+      stageWidth: stage.width,
+      stageHeight: stage.height,
+      screenshotId,
+    };
+    const resizeAndPaint = () => {
+      const comp = compositorRef.current;
+      if (!comp) return;
+      comp.resize(stage.width, stage.height, screenshotOutput.width, screenshotOutput.height);
+      // Paint in the same turn as the resize so the cleared GPU canvas is not
+      // presented as a black frame while waiting for another animation frame.
+      paintImmediatelyRef.current();
+    };
+    if (
+      !screenshotId ||
+      screenshotId !== previous.screenshotId ||
+      stage.width !== previous.stageWidth ||
+      stage.height !== previous.stageHeight
+    ) {
+      resizeAndPaint();
+      return;
+    }
+    // Padding changes the still's output resolution on every slider step.
+    // Reallocating the renderer and perspective texture at that rate blanks
+    // the preview; keep painting the changed look at the existing resolution
+    // until the user pauses the adjustment.
+    const timer = window.setTimeout(resizeAndPaint, 180);
+    return () => window.clearTimeout(timer);
   }, [
     stage.width,
     stage.height,

@@ -25,6 +25,7 @@ pub const RECORDER_LABEL: &str = "recorder";
 pub const LIBRARY_LABEL: &str = "library";
 pub const CAMERA_LABEL: &str = "camera";
 pub const ANNOTATION_LABEL: &str = "annotation";
+pub const ANNOTATION_CONTROLS_LABEL: &str = "annotation-controls";
 pub const EDITOR_LABEL_PREFIX: &str = "editor:";
 
 /// Frontend listens on this channel to swap the editor shell to the recordings grid.
@@ -456,7 +457,7 @@ fn set_follows_spaces(_win: &tauri::WebviewWindow, _follows: bool) {}
 /// listed (title-based matching used to collide with the HUD's `"Capptivo"`
 /// title and black out fullscreen shells).
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const CAPTURE_EXCLUDED_LABELS: &[&str] = &[RECORDER_LABEL, CAMERA_LABEL, "area-frame"];
+const CAPTURE_EXCLUDED_LABELS: &[&str] = &[RECORDER_LABEL, CAMERA_LABEL, "area-frame", ANNOTATION_CONTROLS_LABEL];
 
 /// macOS: CGWindowIDs (`NSWindow.windowNumber`) for SCK `excluded_targets`.
 /// Prefer this over window *titles* — titles change (library `setTitle`, rename).
@@ -706,8 +707,10 @@ fn prepare_shell_activation(app: &AppHandle) {
         // Space so activation cannot treat primary as "the" Capptivo Space.
         set_follows_spaces(&cam, false);
     }
-    if let Some(ann) = app.get_webview_window(ANNOTATION_LABEL) {
-        set_follows_spaces(&ann, false);
+    for label in [ANNOTATION_LABEL, ANNOTATION_CONTROLS_LABEL] {
+        if let Some(ann) = app.get_webview_window(label) {
+            set_follows_spaces(&ann, false);
+        }
     }
 }
 
@@ -717,16 +720,13 @@ fn prepare_shell_activation(_app: &AppHandle) {}
 /// Re-apply annotation Spaces policy after [`prepare_shell_activation`] unpinned
 /// it. No-op when the overlay is hidden or absent.
 fn restore_annotation_spaces_if_shown(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(ANNOTATION_LABEL) else {
-        return;
-    };
-    if !win.is_visible().unwrap_or(false) {
-        return;
+    for label in [ANNOTATION_LABEL, ANNOTATION_CONTROLS_LABEL] {
+        let Some(win) = app.get_webview_window(label) else { continue; };
+        if !win.is_visible().unwrap_or(false) { continue; }
+        let w = win.clone();
+        let _ = win.run_on_main_thread(move || apply_annotation_spaces_policy(&w));
     }
-    let w = win.clone();
-    let _ = win.run_on_main_thread(move || {
-        apply_annotation_spaces_policy(&w);
-    });
+    raise_recording_chrome(app);
 }
 
 /// Pin the annotation overlay to every Space (incl. fullscreen auxiliaries).
@@ -1627,6 +1627,7 @@ pub fn set_annotation_display_follow(follow: bool) {
     ANNOTATION_FOLLOW_DISPLAY.store(follow, Ordering::Relaxed);
 }
 
+
 fn arm_annotation_escape(app: &AppHandle) {
     if ANNOTATION_ESCAPE_ARMED.swap(true, Ordering::SeqCst) {
         return;
@@ -1694,68 +1695,52 @@ pub fn show_annotation_overlay(app: AppHandle) -> tauri::Result<()> {
 }
 
 fn show_annotation_overlay_inner(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(win) = app.get_webview_window(ANNOTATION_LABEL) {
+    for (label, layer, title) in [
+        (ANNOTATION_LABEL, "ink", "Capptivo_Next Annotation Ink"),
+        (ANNOTATION_CONTROLS_LABEL, "controls", "Capptivo_Next Annotation Controls"),
+    ] {
+        let win = if let Some(win) = app.get_webview_window(label) { win } else {
+            crate::webview_gpu::apply_gpu_args(WebviewWindowBuilder::new(
+                app, label, WebviewUrl::App(format!("annotation.html?layer={layer}").into()),
+            ).title(title).resizable(false).decorations(false).transparent(true)
+             .shadow(false).always_on_top(true).skip_taskbar(true)
+             .accept_first_mouse(true).visible(false)).build()?
+        };
         position_annotation_on_active_display(app, &win)?;
-        // `position_…` only re-asserts the policy when the window is already
-        // visible, which it is not here — so apply it explicitly before showing.
         let w = win.clone();
-        let _ = win
-            .clone()
-            .run_on_main_thread(move || apply_annotation_spaces_policy(&w));
+        win.run_on_main_thread(move || apply_annotation_spaces_policy(&w))?;
         win.show()?;
-        let _ = app.emit(ANNOTATION_VISIBILITY_EVENT, true);
-        arm_annotation_escape(app);
-        start_annotation_display_follow(app);
-        raise_recording_chrome(app);
-        return Ok(());
     }
-
-    let win = crate::webview_gpu::apply_gpu_args(
-        WebviewWindowBuilder::new(
-            app,
-            ANNOTATION_LABEL,
-            WebviewUrl::App("annotation.html".into()),
-        )
-        .title("Capptivo_Next Annotation")
-        .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        // Same first-click rule as the recorder bar: the overlay is click-through
-        // most of the time, so it's almost never the key window when the user
-        // clicks its toolbar — without this the first click only refocuses.
-        .accept_first_mouse(true)
-        .visible(false),
-    )
-    .build()?;
-
-    position_annotation_on_active_display(app, &win)?;
-    // `ns_window()` only exists once `build()` has returned, so the Spaces policy
-    // has to be applied here rather than through the builder.
-    let w = win.clone();
-    let _ = win
-        .clone()
-        .run_on_main_thread(move || apply_annotation_spaces_policy(&w));
-    win.show()?;
     let _ = app.emit(ANNOTATION_VISIBILITY_EVENT, true);
     arm_annotation_escape(app);
     start_annotation_display_follow(app);
-    // Ink is fullscreen always-on-top — re-assert HUD / face-cam above it or
-    // the highlighter toggle (and camera) are unreachable.
     raise_recording_chrome(app);
     Ok(())
 }
 
-/// Keep recorder HUD + face-cam above the annotation layer (same always-on-top
-/// band; last `set_always_on_top(true)` wins the z-order on macOS).
+/// Keep controls above ink even when clicking the ink makes it the key window.
 fn raise_recording_chrome(app: &AppHandle) {
-    if let Some(rec) = app.get_webview_window(RECORDER_LABEL) {
-        let _ = rec.set_always_on_top(true);
+    #[cfg(target_os = "macos")]
+    {
+        let Some(ink) = app.get_webview_window(ANNOTATION_LABEL) else { return; };
+        let app = app.clone();
+        let _ = ink.run_on_main_thread(move || {
+            use objc::{msg_send, sel, sel_impl};
+            let Some(ink) = app.get_webview_window(ANNOTATION_LABEL) else { return; };
+            let Ok(ptr) = ink.ns_window() else { return; };
+            let level: isize = unsafe { msg_send![ptr as *mut objc::runtime::Object, level] };
+            for (label, offset) in [(ANNOTATION_CONTROLS_LABEL, 1isize), (RECORDER_LABEL, 2), (CAMERA_LABEL, 2)] {
+                if let Some(win) = app.get_webview_window(label) {
+                    if let Ok(ptr) = win.ns_window() {
+                        unsafe { let _: () = msg_send![ptr as *mut objc::runtime::Object, setLevel: level + offset]; }
+                    }
+                }
+            }
+        });
     }
-    if let Some(cam) = app.get_webview_window(CAMERA_LABEL) {
-        let _ = cam.set_always_on_top(true);
+    #[cfg(not(target_os = "macos"))]
+    for label in [ANNOTATION_CONTROLS_LABEL, RECORDER_LABEL, CAMERA_LABEL] {
+        if let Some(win) = app.get_webview_window(label) { let _ = win.set_always_on_top(true); }
     }
 }
 
@@ -1766,18 +1751,28 @@ pub fn hide_annotation_overlay(app: AppHandle) -> tauri::Result<()> {
     hide_annotation_overlay_inner(&app)
 }
 
+#[tauri::command]
+pub fn annotation_overlay_visible(app: AppHandle) -> bool {
+    app.get_webview_window(ANNOTATION_LABEL)
+        .and_then(|win| win.is_visible().ok())
+        .unwrap_or(false)
+}
+
 fn hide_annotation_overlay_inner(app: &AppHandle) -> tauri::Result<()> {
     stop_annotation_display_follow();
     // Next show starts following again; the WebView re-reports on mount when a
     // tool is armed. Resetting on hide (not show) means a re-show mid-draw
     // cannot yank the canvas out from under the stroke.
     ANNOTATION_FOLLOW_DISPLAY.store(true, Ordering::Relaxed);
-    if let Some(win) = app.get_webview_window(ANNOTATION_LABEL) {
+    for label in [ANNOTATION_LABEL, ANNOTATION_CONTROLS_LABEL] {
+      if let Some(win) = app.get_webview_window(label) {
         set_follows_spaces(&win, false);
         win.hide()?;
-        let _ = app.emit(ANNOTATION_VISIBILITY_EVENT, false);
-        disarm_annotation_escape(app);
+
     }
+    }
+    let _ = app.emit(ANNOTATION_VISIBILITY_EVENT, false);
+    disarm_annotation_escape(app);
     Ok(())
 }
 
@@ -1808,6 +1803,9 @@ fn sync_annotation_display_inner(app: &AppHandle) -> tauri::Result<()> {
         }
     }
     position_annotation_on_active_display(app, &win)?;
+    if let Some(controls) = app.get_webview_window(ANNOTATION_CONTROLS_LABEL) {
+        position_annotation_on_active_display(app, &controls)?;
+    }
     let _ = app.emit(ANNOTATION_DISPLAY_EVENT, ());
     // Keep HUD / face-cam above the freshly moved fullscreen layer.
     raise_recording_chrome(app);

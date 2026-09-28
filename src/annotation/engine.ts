@@ -270,6 +270,7 @@ export class AnnotationEngine {
   private currentPoints: Point[] = [];
   private shapeStart: Point | null = null;
   private textEditor: HTMLDivElement | null = null;
+  private commitTextEditor: (() => void) | null = null;
   private textEditorOpenTimer: number | null = null;
   private selectedTextIndex: number | null = null;
   private draggingSelectedText = false;
@@ -742,7 +743,12 @@ export class AnnotationEngine {
     };
   }
 
+  finishTextEditing() {
+    this.commitTextEditor?.();
+  }
+
   setTool(t: AnnotationTool) {
+    this.finishTextEditing();
     if (this.textEditorOpenTimer != null) {
       window.clearTimeout(this.textEditorOpenTimer);
       this.textEditorOpenTimer = null;
@@ -1160,6 +1166,7 @@ export class AnnotationEngine {
   }
 
   private removeTextEditor() {
+    this.commitTextEditor = null;
     if (this.textEditor) {
       this.textEditor.remove();
       this.textEditor = null;
@@ -1174,6 +1181,7 @@ export class AnnotationEngine {
   }
 
   private placeTextEditor(clientX: number, clientY: number) {
+    this.finishTextEditing();
     this.removeTextEditor();
     const editor = document.createElement("div");
     const lineHeight = getTextLineHeight(this.textFontSize);
@@ -1244,6 +1252,8 @@ export class AnnotationEngine {
       this.scheduleFrame();
     };
 
+    this.commitTextEditor = commit;
+
     editor.addEventListener("input", () => {
       autoSize();
     });
@@ -1262,7 +1272,7 @@ export class AnnotationEngine {
       }
     });
     editor.addEventListener("blur", () => {
-      queueMicrotask(() => commit());
+      commit();
     });
   }
 

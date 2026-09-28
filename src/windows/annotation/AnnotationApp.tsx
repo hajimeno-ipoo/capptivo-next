@@ -30,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 
 import { AnnotationEngine } from "@/annotation/engine";
 import type { AnnotationTool, ShapeKind } from "@/annotation/types";
@@ -50,6 +50,13 @@ import {
  */
 const CONTEXT_WATCHDOG_MS = 2_000;
 import { cn } from "@/lib/utils";
+
+const IS_INK = new URLSearchParams(window.location.search).get("layer") === "ink";
+const SETTINGS_EVENT = "annotation://settings";
+const ACTION_EVENT = "annotation://action";
+const READY_EVENT = "annotation://ink-ready";
+type AnnotationAction = "undo" | "redo" | "clear" | { action: "clear"; nonce: string };
+type AnnotationSettings = { tool: AnnotationTool; color: string; shapeKind: ShapeKind; brushSize: number };
 
 const ANNOTATION_ESCAPE_EVENT = "annotation://escape";
 const ANNOTATION_DISPLAY_EVENT = "annotation://display";
@@ -83,6 +90,7 @@ function barTransform(x: number, y: number): string {
 export function AnnotationApp() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AnnotationEngine | null>(null);
+  const propertiesElRef = useRef<HTMLDivElement | null>(null);
   // Pass-through until the user picks a drawing tool — otherwise the overlay
   // steals every click from the Mac.
   const [tool, setTool] = useState<ToolId>("select");
@@ -99,11 +107,12 @@ export function AnnotationApp() {
   } | null>(null);
   /** True for the whole grip gesture — read by the click-through poll. */
   const draggingRef = useRef(false);
+  const interactingRef = useRef(false);
   /** Latest drag offset, committed to state once on release. */
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const dragRafRef = useRef(0);
   const toolbarElRef = useRef<HTMLDivElement | null>(null);
-  const ignoreRef = useRef(false);
+  const ignoreRef = useRef<boolean | null>(null);
   /**
    * `scaleFactor` / `outerPosition` for the overlay window. Both are fixed for
    * a full-screen overlay and only change when it hops displays, so they are
@@ -125,14 +134,90 @@ export function AnnotationApp() {
   overlayVisibleRef.current = overlayVisible;
 
   useEffect(() => {
-    let stop: (() => void) | null = null;
-    void listen<{ hidden: boolean; nonce: string }>("screenshot://chrome", (event) => {
-      setScreenshotChromeHidden(event.payload.hidden);
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        void emit("screenshot://chrome-ready", event.payload.nonce);
-      }));
-    }).then((fn) => { stop = fn; });
-    return () => stop?.();
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    const register = async () => {
+      if (IS_INK) {
+        const stop = await listen<{ nonce: string }>("annotation://prepare-capture", ({ payload }) => {
+          engineRef.current?.finishTextEditing();
+          engineRef.current?.clearSelectedTextSelection();
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            void emitTo("annotation-controls", "annotation://capture-ready", payload);
+          }));
+        });
+        if (disposed) stop(); else stops.push(stop);
+        return;
+      }
+      let pendingNonce: string | null = null;
+      const ready = await listen<{ nonce: string }>("annotation://capture-ready", ({ payload }) => {
+        if (pendingNonce !== payload.nonce) return;
+        pendingNonce = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          void emit("screenshot://chrome-ready", { nonce: payload.nonce, error: null });
+        }));
+      });
+      if (disposed) { ready(); return; }
+      stops.push(ready);
+      const chrome = await listen<{ hidden: boolean; nonce: string }>("screenshot://chrome", ({ payload }) => {
+        setScreenshotChromeHidden(payload.hidden);
+        if (payload.hidden) {
+          pendingNonce = payload.nonce;
+          void emitTo("annotation", "annotation://prepare-capture", { nonce: payload.nonce });
+        } else {
+          pendingNonce = null;
+          void emit("screenshot://chrome-ready", { nonce: payload.nonce, error: null });
+        }
+      });
+      if (disposed) chrome(); else stops.push(chrome);
+    };
+    void register();
+    return () => { disposed = true; stops.forEach((stop) => stop()); };
+  }, []);
+
+  const settingsRef = useRef<AnnotationSettings>({ tool, color, shapeKind, brushSize });
+  settingsRef.current = { tool, color, shapeKind, brushSize };
+  useEffect(() => {
+    if (!IS_INK) void emitTo("annotation", SETTINGS_EVENT, settingsRef.current);
+  }, [tool, color, shapeKind, brushSize, overlayVisible]);
+
+  // The ink window requests the current state after its listeners are installed.
+  // This handshake also covers either order of native window creation.
+  useEffect(() => {
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    const register = async () => {
+      const stop = IS_INK
+        ? await listen<AnnotationSettings>(SETTINGS_EVENT, ({ payload }) => {
+            setTool(payload.tool); setColor(payload.color);
+            setShapeKind(payload.shapeKind); setBrushSize(payload.brushSize);
+          })
+        : await listen(READY_EVENT, () => { void emitTo("annotation", SETTINGS_EVENT, settingsRef.current); });
+      if (disposed) { stop(); return; }
+      stops.push(stop);
+      if (IS_INK) {
+        const stopAction = await listen<AnnotationAction>(ACTION_EVENT, ({ payload }) => {
+          const engine = engineRef.current;
+          engine?.finishTextEditing();
+          if (payload === "undo") engine?.undo();
+          else if (payload === "redo") engine?.redo();
+          else if (engine) {
+            engine.clearAll();
+            if (typeof payload !== "string") {
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                void emit("annotation://screenshot-cleared", { nonce: payload.nonce });
+              }));
+            }
+          }
+        });
+        if (disposed) { stopAction(); return; }
+        stops.push(stopAction);
+        void emitTo("annotation-controls", READY_EVENT);
+      } else {
+        void emitTo("annotation", SETTINGS_EVENT, settingsRef.current);
+      }
+    };
+    void register();
+    return () => { disposed = true; stops.forEach((stop) => stop()); };
   }, []);
 
   const passThrough = tool === "select" && panel === null;
@@ -160,13 +245,15 @@ export function AnnotationApp() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
-      onEscape();
+      if (IS_INK) void emitTo("annotation-controls", ANNOTATION_ESCAPE_EVENT);
+      else onEscape();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onEscape]);
 
   useEffect(() => {
+    if (IS_INK) return;
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void listen(ANNOTATION_ESCAPE_EVENT, onEscape).then((fn) => {
@@ -316,12 +403,17 @@ export function AnnotationApp() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void listen<boolean>("annotation://visibility", (e) => {
+      ignoreRef.current = null;
+      overlayVisibleRef.current = e.payload;
       setOverlayVisible(e.payload);
+      if (!IS_INK) setScreenshotChromeHidden(false);
+      if (e.payload && IS_INK) void emitTo("annotation-controls", READY_EVENT);
       logClientInfo(
         "annotation:visibility",
         e.payload ? "shown" : "hidden",
       );
       if (!e.payload) {
+        interactingRef.current = false;
         setTool("select");
         setPanel(null);
       }
@@ -343,7 +435,7 @@ export function AnnotationApp() {
   // WebView timer — those get App-Nap'd once click-through) moves the overlay
   // across displays; skip hops while a tool is armed so the canvas isn't yanked.
   useEffect(() => {
-    if (!overlayVisible) return;
+    if (IS_INK || !overlayVisible) return;
     void commands
       .setAnnotationDisplayFollow(passThrough)
       .catch(() => undefined);
@@ -375,10 +467,13 @@ export function AnnotationApp() {
   // it's over the bar / left-side menus. Suspended while the overlay is hidden —
   // no point running ~37 IPC round-trips/sec against an off-screen window.
   useEffect(() => {
-    if (!passThrough || !overlayVisible) {
+    if (IS_INK) {
+      applyIgnore(tool === "select");
+      return;
+    }
+    if (!overlayVisible) {
       // Only reset click-through when the tool actually allows hits; when merely
       // hidden, leave the ignore state as-is (it's re-evaluated on re-show).
-      if (!passThrough) applyIgnore(false);
       return;
     }
 
@@ -394,7 +489,7 @@ export function AnnotationApp() {
       // `setIgnoreCursorEvents(true)` under an active pointer capture —
       // cutting the event stream (the bar stalls) and churning the window's
       // event shadow every 80 ms (the flicker).
-      if (draggingRef.current) {
+      if (draggingRef.current || interactingRef.current) {
         applyIgnore(false);
         timer = window.setTimeout(tick, 80);
         return;
@@ -421,14 +516,9 @@ export function AnnotationApp() {
         if (cancelled) return;
         const x = (cursor.x - metrics.x) / metrics.scale;
         const y = (cursor.y - metrics.y) / metrics.scale;
-        const r = el.getBoundingClientRect();
-        // Properties are closed while passing clicks through. Keep only the
-        // compact dock interactive so the screen behind stays usable.
-        const over =
-          x >= r.left - 8 &&
-          x <= r.right + 8 &&
-          y >= r.top - 8 &&
-          y <= r.bottom + 8;
+        const rects = [el, propertiesElRef.current].filter((node): node is HTMLDivElement => node !== null).map((node) => node.getBoundingClientRect());
+        const over = !screenshotChromeHidden && rects.some((r) =>
+          x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8);
         applyIgnore(!over);
       } catch {
         winMetricsRef.current = null;
@@ -442,7 +532,7 @@ export function AnnotationApp() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [passThrough, overlayVisible]);
+  }, [tool, overlayVisible, screenshotChromeHidden]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -497,8 +587,13 @@ export function AnnotationApp() {
     // *content selection* that sweeps over the full-viewport canvas — WebKit
     // paints the blue selection tint across the selected canvas's entire box,
     // i.e. the whole screen, until mouse-up.
-    <div className="annotation-shell relative h-screen w-screen overflow-hidden bg-transparent select-none">
-      <canvas
+    <div
+      className="annotation-shell relative h-screen w-screen overflow-hidden bg-transparent select-none"
+      onPointerDownCapture={() => { if (!IS_INK) interactingRef.current = true; }}
+      onPointerUpCapture={() => { interactingRef.current = false; }}
+      onPointerCancelCapture={() => { interactingRef.current = false; }}
+    >
+      {IS_INK && <canvas
         ref={canvasRef}
         className={cn(
           "absolute inset-0 h-full w-full touch-none",
@@ -506,9 +601,9 @@ export function AnnotationApp() {
             ? "pointer-events-none cursor-default"
             : "cursor-crosshair",
         )}
-      />
+      />}
 
-      <div
+      {!IS_INK && <div
         ref={toolbarElRef}
         // Keep the dock on its own compositor layer while dragging over the
         // transparent full-screen overlay.
@@ -605,12 +700,12 @@ export function AnnotationApp() {
           <Divider />
           <ToolBtn
             label="元に戻す"
-            onClick={() => engineRef.current?.undo()}
+            onClick={() => { void emitTo("annotation", ACTION_EVENT, "undo"); }}
             icon={<Undo2 className="size-5" />}
           />
           <ToolBtn
             label="やり直す"
-            onClick={() => engineRef.current?.redo()}
+            onClick={() => { void emitTo("annotation", ACTION_EVENT, "redo"); }}
             icon={<Redo2 className="size-5" />}
           />
           <Divider />
@@ -618,7 +713,7 @@ export function AnnotationApp() {
             label="すべて消す"
             title="すべて消す（元に戻せません）"
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => engineRef.current?.clearAll()}
+            onClick={() => { void emitTo("annotation", ACTION_EVENT, "clear"); }}
             icon={<Trash2 className="size-5" />}
           />
         </div>
@@ -632,6 +727,7 @@ export function AnnotationApp() {
 
         {panel === "properties" && tool !== "select" && (
           <div
+            ref={propertiesElRef}
             role="group"
             aria-label={tool === "shape" ? "図形の設定" : "道具の設定"}
             className="absolute top-1/2 right-[calc(100%+12px)] w-[284px] -translate-y-1/2 rounded-[20px] border border-border bg-popover p-4 text-popover-foreground shadow-2xl"
@@ -710,7 +806,7 @@ export function AnnotationApp() {
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

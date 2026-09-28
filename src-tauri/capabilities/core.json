@@ -7,6 +7,7 @@
     "library",
     "camera",
     "annotation",
+    "annotation-controls",
     "editor:*",
     "area-picker",
     "area-frame"

@@ -1,24 +1,22 @@
-//! Per-window video capture via ScreenCaptureKit (`DesktopIndependentWindow`).
+//! Display, area and window capture through the shared ScreenCaptureKit filter.
 //!
 //! Encoder dimensions come from the **first CVPixelBuffer** SCK emits — never from
 //! a precomputed guess. That keeps `CaptureHandle` width/height aligned with what
 //! FFmpeg actually receives (avoids letterboxing / black bars on the right).
 
-use super::picker_sources;
+use super::capture_filter;
 use super::RawFrame;
-use crate::cursor::CaptureRect;
+use crate::recorder::types::CaptureCrop;
 use crate::error::{AppError, AppResult};
 use crate::recorder::hw_encoder;
 use crossbeam_channel::{Sender, TrySendError};
 use objc::{msg_send, sel, sel_impl};
 use objc_id::Id;
 use screencapturekit_sys::cm_sample_buffer_ref::CMSampleBufferRef;
-use screencapturekit_sys::content_filter::{UnsafeContentFilter, UnsafeInitParams};
+use screencapturekit_sys::content_filter::UnsafeContentFilter;
 use screencapturekit_sys::cv_pixel_buffer_ref::CVPixelBufferRef;
 use screencapturekit_sys::os_types::base::{BOOL, CMTime, CMTimeScale};
 use screencapturekit_sys::sc_stream_frame_info::SCFrameStatus;
-use screencapturekit_sys::shareable_content::{UnsafeSCDisplay, UnsafeSCWindow};
-use objc_id::ShareId;
 use screencapturekit_sys::stream::UnsafeSCStream;
 use screencapturekit_sys::stream_configuration::{
     UnsafeStreamConfiguration, UnsafeStreamConfigurationRef,
@@ -29,15 +27,16 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tauri::AppHandle;
 
 const OUTPUT_TYPE_SCREEN: u8 = 0;
-/// How long `start()` waits for the first frame before failing window capture.
+/// How long `start()` waits for the first frame before failing capture.
 pub const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct QuietErrors;
 impl UnsafeSCStreamError for QuietErrors {
     fn handle_error(&self) {
-        tracing::warn!("window SCStream error");
+        tracing::warn!("SCStream capture error");
     }
 }
 
@@ -122,81 +121,39 @@ impl UnsafeSCStreamOutput for VideoOut {
     }
 }
 
-/// Start capturing a single window. Signals `ready` on the first frame (or `Err`
+/// Start capturing the selected source. Signals `ready` on the first frame (or `Err`
 /// if setup fails / no frames before stop).
-pub fn run_window_capture(
-    window_id: u32,
+pub fn run_capture(
+    app: AppHandle,
+    source_id: String,
+    crop: Option<CaptureCrop>,
     fps: u32,
     stop: Arc<AtomicBool>,
     dropped: Arc<AtomicU64>,
     tx: Sender<RawFrame>,
     ready: Sender<AppResult<([u32; 2], Instant, u64)>>,
 ) {
-    if let Err(e) = run_window_capture_inner(window_id, fps, stop, dropped, tx, ready.clone()) {
+    if let Err(e) = run_capture_inner(app, source_id, crop, fps, stop, dropped, tx, ready.clone()) {
         let _ = ready.send(Err(e));
     }
 }
 
-fn run_window_capture_inner(
-    window_id: u32,
+fn run_capture_inner(
+    app: AppHandle,
+    source_id: String,
+    crop: Option<CaptureCrop>,
     fps: u32,
     stop: Arc<AtomicBool>,
     dropped: Arc<AtomicU64>,
     tx: Sender<RawFrame>,
     ready: Sender<AppResult<([u32; 2], Instant, u64)>>,
 ) -> AppResult<()> {
-    let content = picker_sources::shareable_content_on_screen()
-        .map_err(|e| AppError::Other(format!("SCShareableContent: {e}")))?;
-
-    let window = content
-        .windows()
-        .into_iter()
-        .find(|w| w.get_window_id() == window_id)
-        .ok_or_else(|| {
-            AppError::InvalidSource(
-                "This window is not visible on screen — click its Dock icon or switch to its Space."
-                    .into(),
-            )
-        })?;
-
-    let displays = content.displays();
-    let native = stream_config_pixels(&window, &displays);
-    // A window wider than the hardware encoder takes is scaled by SCK on the
-    // GPU rather than encoded in software at full size (see
-    // `hw_encoder::HW_ENCODER_EDGE`). `scales_to_fit` is what makes SCK honour
-    // a size other than the window's own; the target keeps the window's aspect
-    // ratio, so nothing is letterboxed.
-    let scaled = hw_encoder::fit_to_hardware_edge(native.0, native.1);
-    let (cfg_w, cfg_h) = scaled.unwrap_or(native);
-    if let Some((w, h)) = scaled {
-        tracing::info!(
-            window_id,
-            native_width = native.0,
-            native_height = native.1,
-            width = w,
-            height = h,
-            "window exceeds the hardware encoder edge; scaling on the GPU"
-        );
-    }
-    let filter = UnsafeContentFilter::init(UnsafeInitParams::DesktopIndependentWindow(window));
-
-    let config = UnsafeStreamConfiguration {
-        width: cfg_w,
-        height: cfg_h,
-        scales_to_fit: BOOL::from(scaled.is_some()),
-        queue_depth: 6,
-        shows_cursor: 0,
-        minimum_frame_interval: CMTime {
-            value: 1,
-            timescale: fps.max(1) as CMTimeScale,
-            epoch: 0,
-            flags: 1,
-        },
-        ..Default::default()
-    };
-    let config_ref: Id<UnsafeStreamConfigurationRef> = config.into();
-    tune_window_stream_config(&config_ref);
-
+    let initial = capture_filter::plan(&app, &source_id, crop)?;
+    let native = ((initial.native_size.0 & !1).max(2), (initial.native_size.1 & !1).max(2));
+    let output_size = hw_encoder::fit_to_hardware_edge(native.0, native.1).unwrap_or(native);
+    let config_ref = stream_configuration(output_size, fps, initial.source_rect, initial.single_window, source_id.starts_with("window:"));
+    let mut key = initial.key;
+    let filter = initial.filter;
     let epoch = Instant::now();
     let epoch_host_ns = host_clock_ns();
     let ready_gate = Arc::new(ReadyGate::new(ready, epoch, epoch_host_ns));
@@ -213,10 +170,29 @@ fn run_window_capture_inner(
     );
     stream
         .start_capture()
-        .map_err(|e| AppError::Other(format!("failed to start window capture: {e}")))?;
+        .map_err(|e| AppError::Other(format!("failed to start capture: {e}")))?;
 
+    let mut last_error = None;
     while !stop.load(Ordering::Relaxed) {
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(200));
+        if stop.load(Ordering::Relaxed) { break; }
+        let result = capture_filter::plan(&app, &source_id, crop).and_then(|next| {
+            if next.key == key { return Ok(()); }
+            let config = stream_configuration(output_size, fps, next.source_rect, next.single_window, source_id.starts_with("window:"));
+            update_stream(&stream, &next.filter, &config)?;
+            key = next.key;
+            Ok(())
+        });
+        match result {
+            Ok(()) => last_error = None,
+            Err(error) => {
+                let message = error.to_string();
+                if last_error.as_ref() != Some(&message) {
+                    tracing::warn!(%source_id, %error, "capture filter update failed");
+                    last_error = Some(message);
+                }
+            }
+        }
     }
     // `UnsafeSCStream::drop` calls `stop_capture()`, which can block for seconds.
     // Teardown off-thread so stop→start on the same window does not wedge the
@@ -226,26 +202,64 @@ fn run_window_capture_inner(
         .spawn(move || drop(stream));
     if !ready_gate.was_signaled() {
         ready_gate.fail(AppError::Other(
-            "window capture stopped before the first frame".into(),
+            "capture stopped before the first frame".into(),
         ));
     }
     Ok(())
 }
 
-/// SCK stream size hint — truncate, not round. Encoder
-/// dimensions still come from the first CVPixelBuffer, not this value.
-fn stream_config_pixels(window: &UnsafeSCWindow, displays: &[ShareId<UnsafeSCDisplay>]) -> (u32, u32) {
-    let f = window.get_frame();
-    let rect = CaptureRect {
-        x: f.origin.x,
-        y: f.origin.y,
-        width: f.size.width,
-        height: f.size.height,
-    };
-    let display_id = picker_sources::display_for_window_frame(&rect, displays)
-        .unwrap_or_else(|| core_graphics::display::CGDisplay::main().id);
-    let scale = picker_sources::display_scale_factor(display_id);
-    picker_sources::points_to_even_pixels(rect.width, rect.height, scale)
+fn stream_configuration(
+    output_size: (u32, u32), fps: u32, crop: Option<CaptureCrop>, single_window: bool, window_source: bool,
+) -> Id<UnsafeStreamConfigurationRef> {
+    let config: Id<UnsafeStreamConfigurationRef> = UnsafeStreamConfiguration {
+        width: output_size.0, height: output_size.1,
+        scales_to_fit: 1, shows_cursor: 0,
+        minimum_frame_interval: CMTime { value: 1, timescale: fps.max(1) as CMTimeScale, epoch: 0, flags: 1 },
+        ..Default::default()
+    }.into();
+    unsafe {
+        let _: () = msg_send![&*config, setQueueDepth: 6usize];
+        if window_source {
+            if !single_window {
+                let supported: BOOL = msg_send![&*config, respondsToSelector: sel!(setIgnoreShadowsDisplay:)];
+                if supported != 0 {
+                    let _: () = msg_send![&*config, setIgnoreShadowsDisplay: BOOL::from(true)];
+                }
+            }
+        }
+        if let Some(crop) = crop {
+            let rect = core_graphics::geometry::CGRect::new(
+                &core_graphics::geometry::CGPoint::new(crop.x, crop.y),
+                &core_graphics::geometry::CGSize::new(crop.width, crop.height));
+            let _: () = msg_send![&*config, setSourceRect: rect];
+        }
+    }
+    if single_window { tune_window_stream_config(&config); }
+    config
+}
+
+fn update_stream(stream: &UnsafeSCStream, filter: &UnsafeContentFilter, config: &UnsafeStreamConfigurationRef) -> AppResult<()> {
+    use block::ConcreteBlock;
+    use objc::runtime::Object;
+    // Wait for each native completion so an unsuccessful update is retried and
+    // the selection key never gets ahead of the stream's actual configuration.
+    for update_filter in [true, false] {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let completion = ConcreteBlock::new(move |error: *mut Object| {
+            let _ = tx.send(error.is_null());
+        }).copy();
+        unsafe {
+            if update_filter {
+                let _: () = msg_send![stream, updateContentFilter: filter completionHandler: &*completion];
+            } else {
+                let _: () = msg_send![stream, updateConfiguration: config completionHandler: &*completion];
+            }
+        }
+        if rx.recv_timeout(Duration::from_secs(3)) != Ok(true) {
+            return Err(AppError::Other(if update_filter { "ScreenCaptureKit filter update failed" } else { "ScreenCaptureKit configuration update failed" }.into()));
+        }
+    }
+    Ok(())
 }
 
 /// macOS 14+: exclude window shadow and keep portions outside the display
@@ -341,6 +355,14 @@ extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_configuration_survives_native_copy() {
+        let config = stream_configuration((640, 480), 30, None, false, true);
+        let copied: *mut objc::runtime::Object = unsafe { msg_send![&*config, copy] };
+        assert!(!copied.is_null());
+        unsafe { let _: () = msg_send![copied, release]; }
+    }
 
     #[test]
     fn cmtime_to_ns_converts_seconds() {

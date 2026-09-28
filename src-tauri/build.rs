@@ -55,6 +55,7 @@ fn main() {
         "flush_camera_capture",
         "show_annotation_overlay",
         "hide_annotation_overlay",
+        "annotation_overlay_visible",
         "set_annotation_display_follow",
         "open_library",
         "open_editor",

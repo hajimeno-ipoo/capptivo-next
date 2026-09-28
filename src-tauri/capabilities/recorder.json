@@ -44,6 +44,7 @@
     "allow-set-camera-preview-visible",
     "allow-show-annotation-overlay",
     "allow-hide-annotation-overlay",
+    "allow-annotation-overlay-visible",
     "allow-open-library",
     "allow-open-editor",
     "allow-open-screenshot-editor",

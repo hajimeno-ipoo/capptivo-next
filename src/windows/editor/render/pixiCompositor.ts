@@ -47,6 +47,7 @@ import {
 } from "@/engine";
 import { captionFrameKey, drawCaptions } from "@/captions/drawCaptions";
 import {
+  cornerRadiusInStage,
   recordingShadowPasses,
   resolveRecordingLayoutParams,
 } from "../lib/composition";
@@ -319,9 +320,15 @@ export async function createPixiFrameCompositor(
         h,
         basePadding,
       );
+      // The screenshot editor can render a 1920-wide logical stage to a much
+      // larger still image. Its px control refers to output pixels, so convert
+      // to stage units before making the shared mask and matching shadow.
+      const radiusInStage = inputs.stillImage
+        ? cornerRadiusInStage(look.cornerRadius, w, outputWidth)
+        : look.cornerRadius;
       const radius = Math.max(
         0,
-        Math.min(look.cornerRadius, Math.min(rect.width, rect.height) / 2),
+        Math.min(radiusInStage, Math.min(rect.width, rect.height) / 2),
       );
 
       updateRecordingShadow(rect, radius, look, !!backgroundImage);

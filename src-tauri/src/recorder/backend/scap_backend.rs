@@ -152,6 +152,7 @@ impl CaptureBackend for ScapBackend {
         let producer_stop = stop_flag.clone();
         let producer_dropped = dropped.clone();
         let producer_source = source_id.clone();
+        let producer_app = self.app.clone();
         std::thread::Builder::new()
             .name(if is_window {
                 "sck-window-capture".into()
@@ -167,8 +168,10 @@ impl CaptureBackend for ScapBackend {
                             return;
                         }
                     };
-                    sck_window::run_window_capture(
-                        window_id,
+                    sck_window::run_capture(
+                        producer_app,
+                        format!("window:{window_id}"),
+                        None,
                         fps,
                         producer_stop,
                         producer_dropped,

@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { translateNow } from "@/lib/i18n";
 import { commands } from "../../ipc/bindings";
 import { onElapsed, onError, onInterrupted, onStateChanged } from "../../ipc/events";
@@ -31,6 +31,30 @@ export type CaptureKind = "video" | "screenshot";
 const SCREENSHOT_CHROME_ACK_TIMEOUT_MS = 2_000;
 const SCREENSHOT_CHROME_RETRY_MS = 100;
 
+async function clearScreenshotInk(nonce: string): Promise<void> {
+  let acknowledge: () => void = () => undefined;
+  const cleared = new Promise<void>((resolve) => { acknowledge = resolve; });
+  const unlisten = await listen<{ nonce: string }>("annotation://screenshot-cleared", ({ payload }) => {
+    if (payload.nonce === nonce) acknowledge();
+  });
+  let timeout: number | null = null;
+  try {
+    await emitTo("annotation", "annotation://action", { action: "clear", nonce });
+    await Promise.race([
+      cleared,
+      new Promise<never>((_, reject) => {
+        timeout = window.setTimeout(
+          () => reject(new Error("撮影後の注釈を消せませんでした")),
+          SCREENSHOT_CHROME_ACK_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== null) window.clearTimeout(timeout);
+    unlisten();
+  }
+}
+
 /**
  * Do not capture until the annotation WebView has painted the requested chrome
  * state. The overlay is created lazily, so the first event can legitimately
@@ -48,8 +72,10 @@ async function setScreenshotChromeHidden(
     acknowledge = resolve;
     rejectReady = reject;
   });
-  const unlisten = await listen<string>("screenshot://chrome-ready", (event) => {
-    if (event.payload === nonce) acknowledge();
+  const unlisten = await listen<{ nonce: string; error: string | null }>("screenshot://chrome-ready", (event) => {
+    if (event.payload.nonce !== nonce) return;
+    if (event.payload.error) rejectReady(new Error(event.payload.error));
+    else acknowledge();
   });
   let retry: number | null = null;
   let timeout: number | null = null;
@@ -67,7 +93,7 @@ async function setScreenshotChromeHidden(
           : "描画ツールバーを元に戻せませんでした",
       ));
     }, SCREENSHOT_CHROME_ACK_TIMEOUT_MS);
-    await ready;
+    return await ready;
   } finally {
     if (retry !== null) window.clearInterval(retry);
     if (timeout !== null) window.clearTimeout(timeout);
@@ -859,8 +885,12 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
     }
     set({ screenshotBusy: true, lastError: null });
     const nonce = `${Date.now()}-${Math.random()}`;
-    const annotationWasVisible = get().annotationVisible;
+    let annotationWasVisible = false;
+    let annotationClosed = false;
     try {
+      // The toolbar can also be opened from the tray, before this WebView has
+      // received a visibility event. Ask the native window at capture time.
+      annotationWasVisible = await commands.annotationOverlayVisible();
       // The annotation canvas remains visible; only its tool strip is removed.
       if (annotationWasVisible) {
         await setScreenshotChromeHidden(true, `${nonce}-hide`);
@@ -870,11 +900,27 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
         crop: captureMode === "area" ? areaSelection!.crop : null,
         showCursor: options.showCursor,
       });
+      // The saved PNG already contains these marks. Wait until the reused ink
+      // canvas has actually repainted empty before opening the editor.
+      if (annotationWasVisible) {
+        try {
+          await clearScreenshotInk(nonce);
+        } catch (e) {
+          reportError(describeError(e));
+        }
+        try {
+          await commands.hideAnnotationOverlay();
+          annotationClosed = true;
+          set({ annotationVisible: false });
+        } catch (e) {
+          reportError(describeError(e));
+        }
+      }
       await commands.openScreenshotEditor(id);
     } catch (e) {
       reportError(describeError(e));
     } finally {
-      if (annotationWasVisible) {
+      if (annotationWasVisible && !annotationClosed) {
         try {
           await setScreenshotChromeHidden(false, `${nonce}-show`);
         } catch (e) {

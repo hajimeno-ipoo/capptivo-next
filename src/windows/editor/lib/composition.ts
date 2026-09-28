@@ -108,6 +108,15 @@ export function maxDevicePaddingFor(width: number, height: number): number {
   return Math.round(Math.min(width, height) * 0.4);
 }
 
+/** Convert a still-image corner radius in output pixels to stage coordinates. */
+export function cornerRadiusInStage(
+  radiusPx: number,
+  stageWidth: number,
+  outputWidth: number,
+): number {
+  return radiusPx * stageWidth / Math.max(1, outputWidth);
+}
+
 /**
  * Composition aspect-ratio presets (web editor's `ASPECT_RATIO_PRESETS`).
  * `recording` matches the source; the rest fix the stage — and therefore the

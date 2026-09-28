@@ -35,6 +35,8 @@ pub(crate) mod picker_sources;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 mod sck_window;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
+pub(crate) mod capture_filter;
+#[cfg(all(target_os = "macos", feature = "scap-capture"))]
 pub(crate) mod window_prepare;
 #[cfg(all(target_os = "macos", feature = "scap-capture"))]
 pub(crate) mod window_focus;
