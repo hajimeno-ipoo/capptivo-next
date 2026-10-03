@@ -1,13 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import {
   blurRegionIsActive,
-  blurRegionPlacement,
-  clampBlurRegion,
-  contentRectPixelsFromCrop,
+  computeCameraTransform,
   type BlurRegion,
-  type ScreenContentCropNorm,
 } from "@/engine";
 
 import { Button } from "@/components/ui/button";
@@ -33,6 +30,12 @@ import {
   type RectHit,
 } from "../lib/useRectDrag";
 import type { InspectorCompositionLayout } from "./InspectorCompositionFrame";
+import { stageRectFromRegion, regionFromStageRect } from "../lib/blurRegionGeometry";
+import { publishPlaybackTime } from "../lib/playback";
+import { getZoomPanAtTime } from "../lib/zoomCache";
+import { videoRectToLayoutFrac } from "../lib/composition";
+import { resolveZoomReactiveState } from "../render/renderFrame";
+import { SCREENSHOT_RENDER_TIME } from "../lib/screenshotStaticTimeline";
 import { ClipTimingDisplay } from "./ClipTimingDisplay";
 
 type BlurRegionsPanelProps = {
@@ -61,74 +64,6 @@ function fullSourceRect(sourceVideoSize: { width: number; height: number } | nul
   }
   const aspect = fileAspect && fileAspect > 0 ? fileAspect : 16 / 9;
   return { width: Math.max(1e-3, aspect), height: 1 };
-}
-
-function sourceContentRect(
-  sourceVideoSize: { width: number; height: number },
-  crop: ScreenContentCropNorm | null,
-) {
-  return crop
-    ? contentRectPixelsFromCrop(sourceVideoSize.width, sourceVideoSize.height, crop)
-    : {
-        ox: 0,
-        oy: 0,
-        rw: sourceVideoSize.width,
-        rh: sourceVideoSize.height,
-      };
-}
-
-function stageRectFromRegion(
-  region: BlurRegion,
-  sourceVideoSize: { width: number; height: number },
-  composition: InspectorCompositionLayout,
-): NormRect | null {
-  const placement = blurRegionPlacement(
-    region,
-    sourceVideoSize.width,
-    sourceVideoSize.height,
-    sourceContentRect(sourceVideoSize, composition.screenContentCrop),
-    composition.recordingRect,
-  );
-  if (!placement) return null;
-  const stageWidth = Math.max(1, composition.stageDimensions.width);
-  const stageHeight = Math.max(1, composition.stageDimensions.height);
-  return {
-    x: placement.dest.x / stageWidth,
-    y: placement.dest.y / stageHeight,
-    width: placement.dest.width / stageWidth,
-    height: placement.dest.height / stageHeight,
-  };
-}
-
-function regionFromStageRect(
-  rect: NormRect,
-  current: BlurRegion,
-  composition: InspectorCompositionLayout,
-  duration: number,
-): BlurRegion {
-  const stageWidth = Math.max(1, composition.stageDimensions.width);
-  const stageHeight = Math.max(1, composition.stageDimensions.height);
-  const recording = composition.recordingRect;
-  const recordingX = recording.x / stageWidth;
-  const recordingY = recording.y / stageHeight;
-  const recordingWidth = Math.max(1e-6, recording.width / stageWidth);
-  const recordingHeight = Math.max(1e-6, recording.height / stageHeight);
-  const crop = composition.screenContentCrop ?? {
-    x: 0,
-    y: 0,
-    width: 1,
-    height: 1,
-  };
-  return clampBlurRegion(
-    {
-      ...current,
-      x: crop.x + ((rect.x - recordingX) / recordingWidth) * crop.width,
-      y: crop.y + ((rect.y - recordingY) / recordingHeight) * crop.height,
-      width: (rect.width / recordingWidth) * crop.width,
-      height: (rect.height / recordingHeight) * crop.height,
-    },
-    duration,
-  );
 }
 
 export function BlurRegionsPanel({
@@ -160,7 +95,36 @@ export function BlurRegionsPanel({
     .filter((region) => region.kind === activeKind)
     .sort((a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id));
   const sourceSize = fullSourceRect(sourceVideoSize, fileAspect);
-  const previewTime = seekTo ?? 0;
+  const currentTime = useEditorStore((s) => s.currentTime);
+  const isPlaying = useEditorStore((s) => s.isPlaying);
+  const [frameTime, setFrameTime] = useState(currentTime);
+  useEffect(() => {
+    if (!canvasHost) return;
+    const onFrame = (event: Event) => setFrameTime((event as CustomEvent<number>).detail);
+    canvasHost.addEventListener("preview-frame-time", onFrame);
+    return () => canvasHost.removeEventListener("preview-frame-time", onFrame);
+  }, [canvasHost]);
+  const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
+  const zoomFragments = useEditorStore((s) => s.zoomFragments);
+  const recordingMetadata = useEditorStore((s) => s.recordingMetadata);
+  const previewTime = isScreenshot
+    ? SCREENSHOT_RENDER_TIME
+    : isPlaying ? frameTime : seekTo ?? currentTime;
+  const zoom = getZoomPanAtTime(
+    zoomFragments, recordingMetadata, composition.screenContentCrop, previewTime,
+    { video: videoRectToLayoutFrac(
+      composition.recordingRect, composition.stageDimensions.width, composition.stageDimensions.height,
+    ) },
+  );
+  const activeZoom = zoomFragments.find((f) => previewTime >= f.start && previewTime <= f.end) ?? null;
+  const camera = computeCameraTransform({
+    stageWidth: composition.stageDimensions.width,
+    stageHeight: composition.stageDimensions.height,
+    videoRect: composition.recordingRect,
+    focus: zoom,
+    scale: zoom.scale,
+    targetScale: resolveZoomReactiveState(activeZoom, previewTime).zoomTargetScale,
+  });
   const visibleRegions = regions.filter((region) =>
     blurRegionIsActive(region, previewTime),
   );
@@ -184,7 +148,7 @@ export function BlurRegionsPanel({
   const pick = useCallback(
     (x: number, y: number, w: number, h: number): RectHit | null => {
       const selectedRect = selected
-        ? stageRectFromRegion(selected, sourceSize, composition)
+        ? stageRectFromRegion(selected, sourceSize, composition, camera)
         : null;
       if (selected && selectedRect) {
         const handle = hitHandleAt(x, y, selectedRect, w, h);
@@ -194,28 +158,34 @@ export function BlurRegionsPanel({
         .reverse()
         .map((region) => ({
           region,
-          rect: stageRectFromRegion(region, sourceSize, composition),
+          rect: stageRectFromRegion(region, sourceSize, composition, camera),
         }))
         .find(({ rect }) => rect && containsPoint(x, y, rect, w, h));
       return hit?.rect
         ? { key: hit.region.id, rect: hit.rect, handle: null }
         : null;
     },
-    [composition, selected, sourceSize, visibleRegions],
+    [camera, composition, selected, sourceSize, visibleRegions],
   );
 
   const { cursor, handlers } = useRectDrag({
     stageRef,
     disabled,
     pick,
-    onPick: setSelectedId,
+    onPick: (id) => {
+      if (id && useEditorStore.getState().isPlaying) {
+        useEditorStore.getState().setPlaying(false);
+        publishPlaybackTime(previewTime, { force: true });
+      }
+      setSelectedId(id);
+    },
     onChange: (id, next) => {
       // useRectDrag reports geometry only. Merge it with the selected region
       // before clamping so a geometry edit cannot reset the effect kind or its
       // timeline interval to the legacy defaults.
       const current = regions.find((region) => region.id === id);
       if (!current) return;
-      onChange(id, regionFromStageRect(next, current, composition, duration));
+      onChange(id, regionFromStageRect(next, current, composition, duration, camera));
     },
   });
 
@@ -301,7 +271,7 @@ export function BlurRegionsPanel({
       {/* The compositor already draws the effects; this layer only handles selection. */}
       {regions.length > 0 && canvasHost && createPortal(
         <div
-          className="pointer-events-auto absolute inset-0"
+          className="pointer-events-auto absolute inset-0 overflow-hidden"
           style={{ cursor }}
         >
           <div
@@ -310,7 +280,7 @@ export function BlurRegionsPanel({
             {...handlers}
           >
             {visibleRegions.map((region) => {
-              const rect = stageRectFromRegion(region, sourceSize, composition);
+              const rect = stageRectFromRegion(region, sourceSize, composition, camera);
               if (!rect) return null;
               return (
               <div
@@ -332,14 +302,14 @@ export function BlurRegionsPanel({
               );
             })}
           </div>
-          {selected && stageRectFromRegion(selected, sourceSize, composition) && (
+          {selected && stageRectFromRegion(selected, sourceSize, composition, camera) && (
             <div className="pointer-events-none absolute inset-0 z-10">
               {(["nw", "ne", "se", "sw"] as const).map((h) => (
                 <div
                   key={h}
                   className="pointer-events-none absolute border-2 border-background bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.4),0_1px_4px_rgba(0,0,0,0.5)]"
                   style={cornerHandleOverlayStyle(
-                    stageRectFromRegion(selected, sourceSize, composition) as NormRect,
+                    stageRectFromRegion(selected, sourceSize, composition, camera) as NormRect,
                     h,
                     CROP_HANDLE_SIZE,
                   )}

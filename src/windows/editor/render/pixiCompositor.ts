@@ -8,7 +8,6 @@
 import "pixi.js/unsafe-eval";
 
 import {
-  BlurFilter,
   Container,
   Graphics,
   Matrix,
@@ -71,6 +70,7 @@ import { CanvasLayer } from "./pixi/canvasLayer";
 import { OutputSurface } from "./pixi/outputSurface";
 import { perspectiveRasterPlan } from "./pixi/outputSizing";
 import { PixiCursorOverlay } from "./pixi/pixiCursor";
+import { createPrivacyBlurFilter } from "./pixi/privacyBlurFilter";
 import { RoundedMask } from "./pixi/roundedMask";
 import { ShadowLayer } from "./pixi/shadowLayer";
 import { SourceTexture } from "./pixi/sourceTexture";
@@ -661,7 +661,7 @@ export async function createPixiFrameCompositor(
 
     while (blurSprites.length < blurPlacements.length) {
       const sprite = new Sprite();
-      sprite.filters = [new BlurFilter({ strength: BLUR_REGION_STRENGTH })];
+      sprite.filters = [createPrivacyBlurFilter(BLUR_REGION_STRENGTH)];
       blurSprites.push(sprite);
       blurLayer.addChild(sprite);
     }

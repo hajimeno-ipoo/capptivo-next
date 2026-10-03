@@ -80,6 +80,11 @@ export function PreviewStage({
   onCanvasHost?: (node: HTMLDivElement | null) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const overlayHostRef = useRef<HTMLDivElement | null>(null);
+  const attachOverlayHost = useCallback((node: HTMLDivElement | null) => {
+    overlayHostRef.current = node;
+    onCanvasHost?.(node);
+  }, [onCanvasHost]);
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   /** Requests a single paused-state repaint; assigned by the render effect. */
   const requestPaintRef = useRef<() => void>(() => {});
@@ -435,6 +440,9 @@ export function PreviewStage({
             textClips,
           },
         );
+        // Selection overlays must use the time of the composed frame rather
+        // than the throttled timeline/store clock while playback is running.
+        if (nowPlaying) overlayHostRef.current?.dispatchEvent(new CustomEvent("preview-frame-time", { detail: t }));
         recoverAttempts = 0;
         return true;
       } catch (e) {
@@ -878,7 +886,7 @@ export function PreviewStage({
             }}
           >
             <div ref={hostRef} className="block h-full w-full" />
-            <div ref={onCanvasHost} className="@container-size pointer-events-none absolute inset-0 z-10" />
+            <div ref={attachOverlayHost} className="@container-size pointer-events-none absolute inset-0 z-10" />
             {playbackUrl === null && !screenshotId ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-white/80">
                 {translate("preview.preparing")}
