@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Simplified Chinese. Typed against `TranslationKey` so a missing key is a compile error. */
 export const zh: Record<TranslationKey, string> = {
+  "fonts.delete": "删除注册字体",
+  "fonts.deleteHint": "删除所选注册字体。使用该字体的文字将恢复为系统默认字体。",
+  "fonts.default": "系统默认",
+  "fonts.system": "系统字体",
+  "fonts.app": "Capptivo 字体",
+  "fonts.register": "注册字体…",
+  "fonts.refresh": "刷新列表",
+  "fonts.appOnly": "注册的字体仅可在 Capptivo 中使用。",
+  "fonts.error": "无法加载字体",
   "app.name": "Capptivo_Next",
   "app.untitled": "未命名录制",
   "app.loading": "加载中…",
@@ -155,6 +164,7 @@ export const zh: Record<TranslationKey, string> = {
   "blur.label": "模糊区域",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "模糊强度",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -279,6 +289,9 @@ export const zh: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Instagram 横图",
   "ratio.hint.21:9": "电影宽屏",
   "ratio.hint.9:21": "电影竖屏",
+  "timeline.empty": "没有片段。重置可恢复录制内容。",
+  "timeline.splitTool": "切割工具",
+  "timeline.rippleDelete": "删除并闭合间隙",
   "timeline.split.on": "点击片段或效果块进行分割。Esc 关闭。",
   "timeline.split.off": "启用分割后，点击要切开的位置",
   "timeline.deleteSelected": "删除所选片段",
@@ -401,6 +414,11 @@ export const zh: Record<TranslationKey, string> = {
   "recorder.sources.displays": "显示器",
   "recorder.sources.windows": "窗口",
   "recorder.sources.empty": "未找到来源。",
+  "tray.openRecorder": "打开录制栏",
+  "tray.annotateScreen": "在屏幕上添加注释…",
+  "tray.openLibrary": "打开资料库…",
+  "tray.quit": "退出 {app}",
+
   "recorder.settings.open": "设置",
   "recorder.language": "语言",
   "recorder.hud.pause": "暂停",

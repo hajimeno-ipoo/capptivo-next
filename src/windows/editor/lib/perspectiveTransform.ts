@@ -146,3 +146,59 @@ export function computePerspectiveCorners(
     bottomLeft: projectPoint(0, safeHeight, safeWidth, safeHeight, params),
   };
 }
+
+export type PerspectivePlaneMapping = {
+  /** Stage-normalized points, before / after the compositor's perspective pass. */
+  project: (point: PerspectiveCorner) => PerspectiveCorner | null;
+  unproject: (point: PerspectiveCorner) => PerspectiveCorner | null;
+};
+
+/** Use the same four-corner projective mapping as Pixi's PerspectiveMesh. */
+export function createPerspectivePlaneMapping(
+  width: number,
+  height: number,
+  look: PerspectiveLook,
+): PerspectivePlaneMapping | null {
+  const corners = computePerspectiveCorners(width, height, look);
+  const [tl, tr, br, bl] = [
+    corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft,
+  ].map((point) => ({ x: point.x / width, y: point.y / height }));
+  const dx1 = tr.x - br.x;
+  const dx2 = bl.x - br.x;
+  const dx3 = tl.x - tr.x + br.x - bl.x;
+  const dy1 = tr.y - br.y;
+  const dy2 = bl.y - br.y;
+  const dy3 = tl.y - tr.y + br.y - bl.y;
+  const determinant = dx1 * dy2 - dx2 * dy1;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) return null;
+  const g = (dx3 * dy2 - dx2 * dy3) / determinant;
+  const h = (dx1 * dy3 - dx3 * dy1) / determinant;
+  const a = tr.x - tl.x + g * tr.x;
+  const b = bl.x - tl.x + h * bl.x;
+  const c = tl.x;
+  const d = tr.y - tl.y + g * tr.y;
+  const e = bl.y - tl.y + h * bl.y;
+  const f = tl.y;
+  return {
+    project(point) {
+      const denominator = g * point.x + h * point.y + 1;
+      if (Math.abs(denominator) < 1e-9) return null;
+      return {
+        x: (a * point.x + b * point.y + c) / denominator,
+        y: (d * point.x + e * point.y + f) / denominator,
+      };
+    },
+    unproject(point) {
+      const aa = a - point.x * g;
+      const bb = b - point.x * h;
+      const dd = d - point.y * g;
+      const ee = e - point.y * h;
+      const denominator = aa * ee - bb * dd;
+      if (Math.abs(denominator) < 1e-9) return null;
+      return {
+        x: ((point.x - c) * ee - bb * (point.y - f)) / denominator,
+        y: (aa * (point.y - f) - (point.x - c) * dd) / denominator,
+      };
+    },
+  };
+}

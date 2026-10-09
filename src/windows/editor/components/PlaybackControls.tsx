@@ -3,7 +3,7 @@
  * play / ±30s / scrubber / time / mute / volume.
  */
 
-import type { RefObject } from "react";
+import { useMemo, type RefObject } from "react";
 import {
   Pause,
   Play,
@@ -20,6 +20,7 @@ import { useI18n } from "@/lib/settings";
 
 import { formatTimelineTime } from "../lib/timelineMath";
 import { presentableVideoTime, toggleEditorPlayback } from "../lib/playback";
+import { createEditedTimeline } from "../lib/editedTimeline";
 import { useEditorStore } from "../store";
 
 export function PlaybackControls({
@@ -34,6 +35,8 @@ export function PlaybackControls({
   const muted = useEditorStore((s) => s.muted);
   const volume = useEditorStore((s) => s.volume);
   const segments = useEditorStore((s) => s.segments);
+  const timeline = useMemo(() => createEditedTimeline(segments, duration), [segments, duration]);
+  const editedTime = timeline.toTimeline(currentTime);
   const setMuted = useEditorStore((s) => s.setMuted);
   const setVolume = useEditorStore((s) => s.setVolume);
 
@@ -48,7 +51,7 @@ export function PlaybackControls({
   const skip = (delta: number) => {
     const video = videoRef.current;
     const base = video?.currentTime ?? currentTime;
-    seek(Math.max(0, Math.min(duration, base + delta)));
+    seek(timeline.toSource(Math.max(0, Math.min(timeline.duration, timeline.toTimeline(base) + delta))));
   };
 
   const togglePlay = () => {
@@ -69,6 +72,7 @@ export function PlaybackControls({
         size="icon"
         className={iconBtn}
         onClick={togglePlay}
+        disabled={timeline.duration <= 0}
         aria-label={isPlaying ? t("playback.pause") : t("playback.play")}
       >
         {isPlaying ? (
@@ -103,14 +107,15 @@ export function PlaybackControls({
       <Slider
         className={`min-w-0 flex-1 ${sliderTheme}`}
         min={0}
-        max={duration || 1}
+        max={timeline.duration || 1}
         step={0.1}
-        value={[Math.min(currentTime, duration || 1)]}
-        onValueChange={([v]) => seek(v ?? 0)}
+        value={[editedTime]}
+        onValueChange={([v]) => seek(timeline.toSource(v ?? 0))}
+        disabled={timeline.duration <= 0}
       />
 
       <span className="min-w-16 shrink-0 text-sm tabular-nums text-muted-foreground">
-        {formatTimelineTime(currentTime)} / {formatTimelineTime(duration)}
+        {formatTimelineTime(editedTime)} / {formatTimelineTime(timeline.duration)}
       </span>
 
       <Button

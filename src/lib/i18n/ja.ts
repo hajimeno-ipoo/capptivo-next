@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Japanese. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ja: Record<TranslationKey, string> = {
+  "fonts.delete": "登録フォントを削除",
+  "fonts.deleteHint": "選択した登録フォントを削除します。使用中の文字はシステム標準の字体に戻ります。",
+  "fonts.default": "システム標準",
+  "fonts.system": "OSのフォント",
+  "fonts.app": "Capptivoに登録したフォント",
+  "fonts.register": "フォントを登録…",
+  "fonts.refresh": "一覧を更新",
+  "fonts.appOnly": "登録したフォントはCapptivo内だけで使用します。",
+  "fonts.error": "フォントを読み込めませんでした",
   "app.name": "Capptivo_Next",
   "app.untitled": "無題の録画",
   "app.loading": "読み込み中…",
@@ -163,6 +172,7 @@ export const ja: Record<TranslationKey, string> = {
 
   "blur.addHighlight": "ハイライトを追加",
 
+  "blur.strength": "ぼかしの強さ",
   "blur.mask": "マスク",
 
   "blur.highlight": "ハイライト",
@@ -291,6 +301,9 @@ export const ja: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Instagram 横向き",
   "ratio.hint.21:9": "シネマワイド",
   "ratio.hint.9:21": "シネマ縦長",
+  "timeline.empty": "クリップがありません。リセットで元動画に戻せます。",
+  "timeline.splitTool": "カットツール",
+  "timeline.rippleDelete": "削除して隙間を詰める",
   "timeline.split.on": "クリップまたはエフェクトをクリックして分割。Escで解除。",
   "timeline.split.off": "分割を有効にし、切る位置をクリック",
   "timeline.deleteSelected": "選択した断片を削除",
@@ -415,6 +428,11 @@ export const ja: Record<TranslationKey, string> = {
   "recorder.sources.displays": "ディスプレイ",
   "recorder.sources.windows": "ウィンドウ",
   "recorder.sources.empty": "ソースが見つかりません。",
+  "tray.openRecorder": "録画バーを開く",
+  "tray.annotateScreen": "画面に注釈を付ける…",
+  "tray.openLibrary": "ライブラリを開く…",
+  "tray.quit": "{app}を終了",
+
   "recorder.settings.open": "設定",
   "recorder.language": "言語",
   "recorder.hud.pause": "一時停止",

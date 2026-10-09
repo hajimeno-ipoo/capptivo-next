@@ -32,7 +32,11 @@ export function toggleEditorPlayback(video: HTMLVideoElement | null): void {
   const { isPlaying, currentTime, segments, setPlaying } =
     useEditorStore.getState();
 
-  if (!isPlaying && video && segments.length > 0) {
+  if (segments.length === 0) {
+    setPlaying(false);
+    return;
+  }
+  if (!isPlaying && video) {
     const last = segments[segments.length - 1];
     if (last && currentTime >= last.end - 1e-3) {
       seekVideo(video, segments[0]!.start);

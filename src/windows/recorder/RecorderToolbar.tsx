@@ -29,6 +29,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -81,6 +82,47 @@ export function RecorderToolbar({
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const settingsMountedRef = useRef(false);
+
+  useEffect(() => {
+    settingsMountedRef.current = true;
+    let disposed = false;
+    let unlisten: UnlistenFn | undefined;
+    const reportFailure = (error: unknown) => {
+      console.error("Failed to open recorder settings", error);
+    };
+    const openRequestedSettings = async () => {
+      if (disposed) return;
+      const status = useRecorderStore.getState().state.status;
+      if (
+        status === "countdown" || status === "recording" ||
+        status === "paused" || status === "finalizing"
+      ) return;
+      const requested = await commands.takeRecorderSettingsRequest();
+      // StrictMode replaces the effect while preserving this component's state.
+      // A request consumed by the first effect must still open the live toolbar.
+      if (!settingsMountedRef.current || !requested) return;
+      setOpenMenu(null);
+      setExpanded(true);
+    };
+    void (async () => {
+      const stop = await listen("recorder://show-settings", () => {
+        void openRequestedSettings().catch(reportFailure);
+      });
+      if (disposed) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+      // The native request survives an event emitted before this listener exists.
+      await openRequestedSettings();
+    })().catch(reportFailure);
+    return () => {
+      settingsMountedRef.current = false;
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   // Clicking a second trigger opens it *and* dismisses the first, in whichever
   // order the events land — a close only counts for the menu that owns it.

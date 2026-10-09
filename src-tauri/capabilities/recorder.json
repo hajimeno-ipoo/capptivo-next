@@ -45,6 +45,8 @@
     "allow-show-annotation-overlay",
     "allow-hide-annotation-overlay",
     "allow-annotation-overlay-visible",
+    "allow-set-tray-labels",
+    "allow-take-recorder-settings-request",
     "allow-open-library",
     "allow-open-editor",
     "allow-open-screenshot-editor",

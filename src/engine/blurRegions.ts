@@ -16,6 +16,8 @@ export type BlurRegion = {
   highlightColor: string;
   /** Highlight opacity from 0 (invisible) to 1 (opaque). Ignored for masks. */
   highlightOpacity: number;
+  /** Gaussian blur strength in composition pixels. Missing in old projects. */
+  blurStrength?: number;
 };
 
 export type BlurRegionRect = {
@@ -35,6 +37,16 @@ export const BLUR_REGION_MIN_SIZE = 0.02;
 export const REGION_MIN_DURATION = 0.05;
 
 export const BLUR_REGION_STRENGTH = 18;
+export const BLUR_REGION_MIN_STRENGTH = 1;
+export const BLUR_REGION_MAX_STRENGTH = 60;
+
+export function normalizeBlurStrength(value: unknown): number {
+  return clamp(
+    typeof value === "number" && Number.isFinite(value) ? value : BLUR_REGION_STRENGTH,
+    BLUR_REGION_MIN_STRENGTH,
+    BLUR_REGION_MAX_STRENGTH,
+  );
+}
 
 export const DEFAULT_HIGHLIGHT_COLOR = "#ffd166";
 export const DEFAULT_HIGHLIGHT_OPACITY = 0.16;
@@ -135,6 +147,7 @@ export function clampBlurRegion(
     start,
     end: end >= minimumEnd ? end : safeDuration,
     kind: region.kind === "highlight" ? "highlight" : "blur",
+    blurStrength: normalizeBlurStrength(region.blurStrength),
     highlightColor: normalizeHexColor(region.highlightColor),
     highlightOpacity: clamp(
       typeof region.highlightOpacity === "number" && Number.isFinite(region.highlightOpacity)
@@ -162,6 +175,7 @@ export function createBlurRegion(
     // A recording shorter than the minimum editable span uses its full length.
     end,
     kind,
+    blurStrength: BLUR_REGION_STRENGTH,
     highlightColor: DEFAULT_HIGHLIGHT_COLOR,
     highlightOpacity: DEFAULT_HIGHLIGHT_OPACITY,
   };

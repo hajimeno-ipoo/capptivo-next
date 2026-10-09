@@ -1,5 +1,9 @@
 import {
   BLUR_REGION_MIN_SIZE,
+  BLUR_REGION_STRENGTH,
+  BLUR_REGION_MIN_STRENGTH,
+  BLUR_REGION_MAX_STRENGTH,
+  createBlurRegion,
   blurRegionPlacement,
   blurRegionIsActive,
   clampBlurRegion,
@@ -106,4 +110,11 @@ assert(
   "a zero-sized source yields no placement",
 );
 
+assert(clamped.blurStrength === BLUR_REGION_STRENGTH, "legacy regions retain their original blur strength");
+assert(createBlurRegion(5).blurStrength === BLUR_REGION_STRENGTH, "new masks start at the established strength");
+assert(clampBlurRegion({ id: "strong", blurStrength: 100 }).blurStrength === BLUR_REGION_MAX_STRENGTH, "excessive strength is bounded");
+assert(clampBlurRegion({ id: "weak", blurStrength: -1 }).blurStrength === BLUR_REGION_MIN_STRENGTH, "mask strength cannot disable the blur");
+assert(clampBlurRegion({ id: "invalid", blurStrength: Number.NaN }).blurStrength === BLUR_REGION_STRENGTH, "invalid strength uses the existing default");
+const savedMask = JSON.parse(JSON.stringify(clampBlurRegion({ id: "persisted", blurStrength: 42, height: 0.02 }, 5)));
+assert(clampBlurRegion(savedMask, 5).blurStrength === 42, "narrow-mask strength survives JSON persistence and normalization");
 console.log("blurRegions.selfcheck: ok");

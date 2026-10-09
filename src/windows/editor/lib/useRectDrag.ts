@@ -96,8 +96,10 @@ export function useRectDrag(params: {
   ) => RectHit | null;
   onChange: (key: string, next: NormRect) => void;
   onPick?: (key: string | null) => void;
+  /** Hit testing uses displayed coordinates; dragging can use the unwarped plane. */
+  mapPointer?: (x: number, y: number, width: number, height: number) => { x: number; y: number } | null;
 }) {
-  const { stageRef, disabled = false, pick, onChange, onPick } = params;
+  const { stageRef, disabled = false, pick, onChange, onPick, mapPointer } = params;
   const pointerIdRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const [cursor, setCursor] = useState("default");
@@ -122,6 +124,8 @@ export function useRectDrag(params: {
         onPick?.(null);
         return;
       }
+      const point = mapPointer ? mapPointer(localX, localY, b.width, b.height) : { x: localX, y: localY };
+      if (!point) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -131,12 +135,12 @@ export function useRectDrag(params: {
       interactionRef.current = {
         key: hit.key,
         handle: hit.handle,
-        startX: localX,
-        startY: localY,
+        startX: point.x,
+        startY: point.y,
         startRect: toPixelRect(hit.rect, b.width, b.height),
       };
     },
-    [bounds, disabled, onPick, pick, stageRef],
+    [bounds, disabled, mapPointer, onPick, pick, stageRef],
   );
 
   const onPointerMove = useCallback(
@@ -152,8 +156,10 @@ export function useRectDrag(params: {
       const inter = interactionRef.current;
 
       if (inter) {
-        const dx = localX - inter.startX;
-        const dy = localY - inter.startY;
+        const point = mapPointer ? mapPointer(localX, localY, b.width, b.height) : { x: localX, y: localY };
+        if (!point) return;
+        const dx = point.x - inter.startX;
+        const dy = point.y - inter.startY;
         const next = inter.handle
           ? resizePixelRect(inter.startRect, inter.handle, dx, dy)
           : {
@@ -175,7 +181,7 @@ export function useRectDrag(params: {
         hover?.handle ? getHandleCursor(hover.handle) : hover ? "move" : "default",
       );
     },
-    [bounds, onChange, pick],
+    [bounds, mapPointer, onChange, pick],
   );
 
   const onPointerUp = useCallback(

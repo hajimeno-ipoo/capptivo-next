@@ -6,7 +6,7 @@ use crate::recorder::types::CaptureCrop;
 use crate::state::AppState;
 use serde_json::Value;
 use std::sync::atomic::Ordering;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 struct BusyGuard<'a>(&'a std::sync::atomic::AtomicBool);
 impl Drop for BusyGuard<'_> {
@@ -74,13 +74,20 @@ pub fn capture_screenshot(
                 .ok_or_else(|| AppError::Other("screenshot capture failed or source disappeared".into()))?;
             state.store.create_screenshot(&png, source_id.clone()).map(|p| p.id)
         })();
+        // The capture session is finished once the PNG is saved, even when
+        // restoring the bar fails and the command must report that failure.
+        if result.is_ok() {
+            let _ = app.emit("recorder://dismissed", ());
+        }
         let mut restore_errors = Vec::new();
         if was_visible {
             if let Err(error) = crate::windows::show_recorder_popover(&app) {
                 restore_errors.push(format!("recorder bar: {error}"));
             }
         }
-        if let Some(c) = crop {
+        // Keep a failed capture ready to retry. A saved screenshot consumes the
+        // selection, so its old frame must not reappear over the editor.
+        if let Some(c) = crop.filter(|_| result.is_err()) {
             let selection = crate::recorder::types::CaptureAreaSelection { source_id: source_id.clone(), crop: c };
             if let Err(error) = crate::area_picker::show_area_frame_guide(&app, &selection) {
                 restore_errors.push(format!("area frame: {error}"));

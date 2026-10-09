@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Arabic. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ar: Record<TranslationKey, string> = {
+  "fonts.delete": "حذف الخط المضاف",
+  "fonts.deleteHint": "يحذف الخط المحدد. يعود النص الذي يستخدمه إلى خط النظام الافتراضي.",
+  "fonts.default": "خط النظام الافتراضي",
+  "fonts.system": "خطوط النظام",
+  "fonts.app": "خطوط Capptivo",
+  "fonts.register": "إضافة خط…",
+  "fonts.refresh": "تحديث القائمة",
+  "fonts.appOnly": "الخطوط المضافة متاحة داخل Capptivo فقط.",
+  "fonts.error": "تعذر تحميل الخط",
   "app.name": "Capptivo_Next",
   "app.untitled": "تسجيل بلا عنوان",
   "app.loading": "جارٍ التحميل…",
@@ -162,6 +171,7 @@ export const ar: Record<TranslationKey, string> = {
   "blur.label": "مناطق التمويه",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "قوة التمويه",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -291,6 +301,9 @@ export const ar: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "أفقي Instagram",
   "ratio.hint.21:9": "سينمائي عريض",
   "ratio.hint.9:21": "سينمائي طويل",
+  "timeline.empty": "لا توجد مقاطع. أعد الضبط لاستعادة التسجيل.",
+  "timeline.splitTool": "أداة القطع",
+  "timeline.rippleDelete": "حذف وإغلاق الفجوة",
   "timeline.split.on":
     "انقر على مقطع أو تأثير للتقسيم. Esc يعطّل ذلك.",
   "timeline.split.off": "فعّل التقسيم ثم انقر مكان القطع",
@@ -415,6 +428,11 @@ export const ar: Record<TranslationKey, string> = {
   "recorder.sources.displays": "الشاشات",
   "recorder.sources.windows": "النوافذ",
   "recorder.sources.empty": "لم يتم العثور على مصادر.",
+  "tray.openRecorder": "فتح شريط التسجيل",
+  "tray.annotateScreen": "إضافة تعليقات على الشاشة…",
+  "tray.openLibrary": "فتح المكتبة…",
+  "tray.quit": "إنهاء {app}",
+
   "recorder.settings.open": "الإعدادات",
   "recorder.language": "اللغة",
   "recorder.hud.pause": "إيقاف مؤقت",

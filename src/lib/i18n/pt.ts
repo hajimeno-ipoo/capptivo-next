@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Portuguese. Typed against `TranslationKey` so a missing key is a compile error. */
 export const pt: Record<TranslationKey, string> = {
+  "fonts.delete": "Excluir fonte registrada",
+  "fonts.deleteHint": "Exclui a fonte selecionada. O texto que a utiliza volta à fonte padrão do sistema.",
+  "fonts.default": "Padrão do sistema",
+  "fonts.system": "Fontes do sistema",
+  "fonts.app": "Fontes do Capptivo",
+  "fonts.register": "Registrar fonte…",
+  "fonts.refresh": "Atualizar lista",
+  "fonts.appOnly": "As fontes registradas estão disponíveis apenas no Capptivo.",
+  "fonts.error": "Não foi possível carregar a fonte",
   "app.name": "Capptivo_Next",
   "app.untitled": "Gravação sem título",
   "app.loading": "A carregar…",
@@ -161,6 +170,7 @@ export const pt: Record<TranslationKey, string> = {
   "blur.label": "Áreas desfocadas",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Intensidade do desfoque",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -290,6 +300,9 @@ export const pt: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Paisagem Instagram",
   "ratio.hint.21:9": "Cinema largo",
   "ratio.hint.9:21": "Cinema alto",
+  "timeline.empty": "Sem clipes. Redefina para restaurar a gravação.",
+  "timeline.splitTool": "Ferramenta de corte",
+  "timeline.rippleDelete": "Excluir e fechar espaço",
   "timeline.split.on":
     "Clique num clip ou efeito para dividir. Esc desativa isto.",
   "timeline.split.off": "Ative a divisão e clique onde cortar",
@@ -415,6 +428,11 @@ export const pt: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Ecrãs",
   "recorder.sources.windows": "Janelas",
   "recorder.sources.empty": "Nenhuma fonte encontrada.",
+  "tray.openRecorder": "Abrir a barra de gravação",
+  "tray.annotateScreen": "Anotar a tela…",
+  "tray.openLibrary": "Abrir a biblioteca…",
+  "tray.quit": "Sair de {app}",
+
   "recorder.settings.open": "Definições",
   "recorder.language": "Idioma",
   "recorder.hud.pause": "Pausar",

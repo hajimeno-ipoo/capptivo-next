@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { drawTextClips, type TextClip } from "@/engine";
-import { commands } from "@/ipc/bindings";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -22,19 +21,7 @@ import {
 } from "./InspectorCompositionFrame";
 import { FieldLabel, SectionLabel } from "./ui";
 import { ClipTimingDisplay } from "./ClipTimingDisplay";
-
-let systemFontsRequest: Promise<string[]> | null = null;
-
-function loadSystemFonts(): Promise<string[]> {
-  if (!systemFontsRequest) {
-    systemFontsRequest = commands.listSystemFonts().then((fonts) =>
-      fonts
-        .filter((font) => typeof font === "string" && font.trim().length > 0)
-        .map((font) => font.trim()),
-    );
-  }
-  return systemFontsRequest;
-}
+import { FontPicker } from "./FontPicker";
 
 export function TextClipsPanel({ composition, canvasHost, onSeek }: {
   composition: InspectorCompositionLayout;
@@ -57,7 +44,6 @@ export function TextClipsPanel({ composition, canvasHost, onSeek }: {
   const previewTime = useEditorStore((s) =>
     s.isPlaying ? undefined : s.currentTime,
   );
-  const [systemFonts, setSystemFonts] = useState<string[] | null>(null);
   const sortedClips = [...clips].sort(
     (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
   );
@@ -69,22 +55,6 @@ export function TextClipsPanel({ composition, canvasHost, onSeek }: {
     selectTextClip(id);
     onSeek(clip.start);
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadSystemFonts()
-      .then((fonts) => {
-        if (!cancelled) setSystemFonts(fonts);
-      })
-      .catch(() => {
-        // A browser-only dev session has no native command bridge. The editor
-        // keeps the current OS-backed family instead of inventing a font list.
-        if (!cancelled) setSystemFonts([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   return (
     <section className="space-y-3">
@@ -147,32 +117,14 @@ export function TextClipsPanel({ composition, canvasHost, onSeek }: {
             />
           </div>
 
-          <label className="space-y-1.5 text-sm font-medium text-foreground">
-            <span>{t("text.font")}</span>
-            <select
+          <div className="space-y-1.5">
+            <FieldLabel htmlFor="text-clip-font">{t("text.font")}</FieldLabel>
+            <FontPicker
+              id="text-clip-font"
               value={selected.fontFamily}
-              disabled={systemFonts === null}
-              onChange={(e) => updateTextClip(selected.id, { fontFamily: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-            >
-              {systemFonts === null ? (
-                <option value={selected.fontFamily}>{selected.fontFamily}</option>
-              ) : (
-                <>
-                  {!systemFonts.includes(selected.fontFamily) && (
-                    <option value={selected.fontFamily} style={{ fontFamily: selected.fontFamily }}>
-                      {selected.fontFamily}
-                    </option>
-                  )}
-                  {systemFonts.map((font) => (
-                    <option key={font} value={font} style={{ fontFamily: font }}>
-                      {font}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-          </label>
+              onChange={(fontFamily) => updateTextClip(selected.id, { fontFamily })}
+            />
+          </div>
 
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-foreground">{t("text.color")}</span>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-app-fonts"
+description = "Enables the list_app_fonts command without any pre-configured scope."
+commands.allow = ["list_app_fonts"]
+
+[[permission]]
+identifier = "deny-list-app-fonts"
+description = "Denies the list_app_fonts command without any pre-configured scope."
+commands.deny = ["list_app_fonts"]

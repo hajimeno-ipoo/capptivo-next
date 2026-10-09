@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-take-recorder-settings-request"
+description = "Enables the take_recorder_settings_request command without any pre-configured scope."
+commands.allow = ["take_recorder_settings_request"]
+
+[[permission]]
+identifier = "deny-take-recorder-settings-request"
+description = "Denies the take_recorder_settings_request command without any pre-configured scope."
+commands.deny = ["take_recorder_settings_request"]

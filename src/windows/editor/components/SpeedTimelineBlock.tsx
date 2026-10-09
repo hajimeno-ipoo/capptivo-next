@@ -6,10 +6,11 @@ import { TimelineResizePill, type TimelineResizeEdge } from "./TimelineResizePil
 type Props = {
   range: SpeedRange;
   selected: boolean;
+  resizable?: boolean;
   onResizePointerDown: (edge: TimelineResizeEdge, e: React.PointerEvent) => void;
 };
 
-export function SpeedTimelineBlock({ range, selected, onResizePointerDown }: Props) {
+export function SpeedTimelineBlock({ range, selected, resizable = true, onResizePointerDown }: Props) {
   return (
     <div
       className={cn(
@@ -19,8 +20,10 @@ export function SpeedTimelineBlock({ range, selected, onResizePointerDown }: Pro
           : "border-transparent bg-emerald-300 hover:bg-emerald-200",
       )}
     >
+      {resizable && <>
       <TimelineResizePill edge="start" hoverGroup="speed" show={selected} onPointerDown={(e) => onResizePointerDown("start", e)} />
       <TimelineResizePill edge="end" hoverGroup="speed" show={selected} onPointerDown={(e) => onResizePointerDown("end", e)} />
+      </>}
       <div className="pointer-events-none flex items-center gap-1 px-2 text-[10px] font-semibold text-emerald-950">
         <Gauge className="size-3.5" aria-hidden />
         <span>{range.rate.toFixed(2)}×</span>

@@ -1,8 +1,10 @@
 import { blurRegionPlacement, clampBlurRegion, type BlurRegion } from "../../../engine/blurRegions.ts";
 import { contentRectPixelsFromCrop, type ScreenContentCropNorm } from "../../../engine/zoomMotion.ts";
 import type { CameraTransform } from "../../../engine/cameraTransform.ts";
+import type { PerspectivePlaneMapping } from "./perspectiveTransform.ts";
 
 type NormRect = { x: number; y: number; width: number; height: number };
+export type RegionQuad = Record<"nw" | "ne" | "se" | "sw", { x: number; y: number }>;
 type RegionComposition = {
   stageDimensions: { width: number; height: number };
   recordingRect: NormRect;
@@ -86,3 +88,22 @@ export function regionFromStageRect(
   );
 }
 
+export function stageQuadFromRect(
+  rect: NormRect,
+  mapping: PerspectivePlaneMapping | null,
+  clipToStage = false,
+): RegionQuad | null {
+  if (!mapping) return null;
+  // The compositor clips the zoomed camera into its stage-sized texture before
+  // applying 3D. Clip only the displayed outline, never the authored rectangle.
+  const left = clipToStage ? Math.max(0, rect.x) : rect.x;
+  const top = clipToStage ? Math.max(0, rect.y) : rect.y;
+  const right = clipToStage ? Math.min(1, rect.x + rect.width) : rect.x + rect.width;
+  const bottom = clipToStage ? Math.min(1, rect.y + rect.height) : rect.y + rect.height;
+  if (!(right > left) || !(bottom > top)) return null;
+  const nw = mapping.project({ x: left, y: top });
+  const ne = mapping.project({ x: right, y: top });
+  const se = mapping.project({ x: right, y: bottom });
+  const sw = mapping.project({ x: left, y: bottom });
+  return nw && ne && se && sw ? { nw, ne, se, sw } : null;
+}

@@ -87,7 +87,7 @@ export function languageDir(lang: Language): "ltr" | "rtl" {
   return lang === "ar" ? "rtl" : "ltr";
 }
 
-const STORAGE_KEY = "capptivo.language";
+export const LANGUAGE_STORAGE_KEY = "capptivo.language";
 
 function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && LANGUAGE_IDS.has(value);
@@ -95,7 +95,7 @@ function isLanguage(value: unknown): value is Language {
 
 export function getStoredLanguage(): Language {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     return isLanguage(raw) ? raw : DEFAULT_LANGUAGE;
   } catch {
     return DEFAULT_LANGUAGE;
@@ -104,7 +104,7 @@ export function getStoredLanguage(): Language {
 
 export function storeLanguage(lang: Language): void {
   try {
-    localStorage.setItem(STORAGE_KEY, lang);
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
   } catch {
     /* best-effort */
   }

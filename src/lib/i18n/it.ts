@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Italian. Typed against `TranslationKey` so a missing key is a compile error. */
 export const it: Record<TranslationKey, string> = {
+  "fonts.delete": "Elimina font aggiunto",
+  "fonts.deleteHint": "Elimina il font selezionato. Il testo che lo usa torna al font di sistema.",
+  "fonts.default": "Predefinito di sistema",
+  "fonts.system": "Font del sistema",
+  "fonts.app": "Font Capptivo",
+  "fonts.register": "Aggiungi font…",
+  "fonts.refresh": "Aggiorna elenco",
+  "fonts.appOnly": "I font aggiunti sono disponibili solo in Capptivo.",
+  "fonts.error": "Impossibile caricare il font",
   "app.name": "Capptivo_Next",
   "app.untitled": "Registrazione senza titolo",
   "app.loading": "Caricamento…",
@@ -168,6 +177,7 @@ export const it: Record<TranslationKey, string> = {
   "blur.label": "Aree sfocate",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Intensità della sfocatura",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -297,6 +307,9 @@ export const it: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Paesaggio Instagram",
   "ratio.hint.21:9": "Cinematografico largo",
   "ratio.hint.9:21": "Cinematografico alto",
+  "timeline.empty": "Nessuna clip. Reimposta per ripristinare la registrazione.",
+  "timeline.splitTool": "Strumento taglio",
+  "timeline.rippleDelete": "Elimina e chiudi lo spazio",
   "timeline.split.on":
     "Clicca su un clip o un effetto per dividere. Esc disattiva.",
   "timeline.split.off": "Attiva la divisione, poi clicca dove tagliare",
@@ -422,6 +435,11 @@ export const it: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Schermi",
   "recorder.sources.windows": "Finestre",
   "recorder.sources.empty": "Nessuna sorgente trovata.",
+  "tray.openRecorder": "Apri la barra di registrazione",
+  "tray.annotateScreen": "Annota lo schermo…",
+  "tray.openLibrary": "Apri la libreria…",
+  "tray.quit": "Esci da {app}",
+
   "recorder.settings.open": "Impostazioni",
   "recorder.language": "Lingua",
   "recorder.hud.pause": "Pausa",

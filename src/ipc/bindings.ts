@@ -16,7 +16,26 @@ import type {
   RecorderState,
 } from "./types";
 
+export type SystemFont = { family: string; displayName: string };
+export type AppFont = SystemFont & { filename: string };
+
+export type TrayLabels = {
+  openRecorder: string;
+  annotateScreen: string;
+  openLibrary: string;
+  settings: string;
+  checkUpdates: string;
+  quit: string;
+  pause: string;
+  resume: string;
+  stop: string;
+  openAnnotation: string;
+  finalizing: string;
+};
+
 export const commands = {
+  setTrayLabels: (labels: TrayLabels) => invoke<void>("set_tray_labels", { labels }),
+  takeRecorderSettingsRequest: () => invoke<boolean>("take_recorder_settings_request"),
   // --- recording ---
   /** `includeThumbnails: false` skips per-source screenshot capture — use it
    *  for the boot-time list, when no picker menu is open. */
@@ -139,7 +158,11 @@ export const commands = {
     invoke<void>("open_screenshot_editor", { screenshotId }),
   presentWindow: () => invoke<void>("present_window"),
   /** Font families visible to the host OS (Core Text on macOS). */
-  listSystemFonts: () => invoke<string[]>("list_system_fonts"),
+  listSystemFonts: () => invoke<SystemFont[]>("list_system_fonts"),
+  listAppFonts: () => invoke<AppFont[]>("list_app_fonts"),
+  importAppFont: () => invoke<AppFont | null>("import_app_font"),
+  deleteAppFont: (filename: string) => invoke<void>("delete_app_font", { filename }),
+  readAppFont: (filename: string) => invoke<ArrayBuffer>("read_app_font", { filename }),
 
   getWhisperModelStatus: () =>
     invoke<{ exists: boolean; path: string | null }>(

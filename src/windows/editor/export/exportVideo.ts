@@ -41,6 +41,7 @@ import { isWindows, mediaUrl } from "@/lib/platform";
 import { commands } from "../../../ipc/bindings";
 import { describeError } from "../../recorder/store";
 import { logClientError } from "@/lib/errorLogging";
+import { ensureFontsLoaded } from "../lib/fontCatalog";
 import { useEditorStore } from "../store";
 import {
   createExportCompositor,
@@ -117,7 +118,7 @@ export async function exportProject(
 ): Promise<void> {
   const store = useEditorStore.getState();
   const { project, screenUrl, sourceVideoSize } = store;
-  if (!project || !screenUrl || !sourceVideoSize) return;
+  if (!project || !screenUrl || !sourceVideoSize || store.segments.length === 0) return;
 
   // Carried as one value so no export path can read the face-cam without the
   // offset that puts it on the screen timeline.
@@ -162,10 +163,7 @@ export async function exportProject(
     return;
   }
 
-  const keptDuration =
-    store.segments.length > 0
-      ? totalKeptDuration(store.segments)
-      : store.duration;
+  const keptDuration = totalKeptDuration(store.segments);
   try {
     await commands.checkExportDiskSpace({
       path,
@@ -195,6 +193,7 @@ export async function exportProject(
   let audioAbsPath: string | null = null;
   let gpuWasLost = false;
   try {
+    await ensureFontsLoaded();
     // Kick audio prepare before ensureSeekable so FFmpeg overlaps that work.
     if (resolved.format !== "gif") {
       const outName = `capptivo-export-audio-${crypto.randomUUID()}.${

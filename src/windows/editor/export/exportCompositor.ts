@@ -11,7 +11,6 @@
 
 import {
   computeCursorLoopReturn,
-  createFullSegment,
   findActivePerspectiveFragment,
   totalKeptDuration,
   type TrimSegment,
@@ -338,10 +337,7 @@ export async function createExportCompositorFromMedia(
     globalSpeed,
   } = editorState;
 
-  const segments: TrimSegment[] =
-    storeSegments.length > 0
-      ? storeSegments
-      : createFullSegment(media.duration);
+  const segments = storeSegments;
   const kept = totalKeptDuration(segments);
   if (kept <= 0) {
     detachLoss();

@@ -8,6 +8,7 @@
 import "pixi.js/unsafe-eval";
 
 import {
+  BlurFilter,
   Container,
   Graphics,
   Matrix,
@@ -22,6 +23,7 @@ import {
 
 import {
   BLUR_REGION_STRENGTH,
+  normalizeBlurStrength,
   DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_HIGHLIGHT_OPACITY,
   CAMERA_IDENTITY,
@@ -68,9 +70,8 @@ import {
 import { ComposeProfiler } from "./composeProfiler";
 import { CanvasLayer } from "./pixi/canvasLayer";
 import { OutputSurface } from "./pixi/outputSurface";
-import { perspectiveRasterPlan } from "./pixi/outputSizing";
+import { outputPresentationPlan, perspectiveRasterPlan } from "./pixi/outputSizing";
 import { PixiCursorOverlay } from "./pixi/pixiCursor";
-import { createPrivacyBlurFilter } from "./pixi/privacyBlurFilter";
 import { RoundedMask } from "./pixi/roundedMask";
 import { ShadowLayer } from "./pixi/shadowLayer";
 import { SourceTexture } from "./pixi/sourceTexture";
@@ -176,6 +177,8 @@ export async function createPixiFrameCompositor(
   const blurMask = new RoundedMask();
   blurLayer.mask = blurMask.graphics;
   const blurSprites: Sprite[] = [];
+  const blurRegionMasks: Graphics[] = [];
+  const blurRegionContainers: Container[] = [];
   const highlightLayer = new Container({ label: "highlight-regions" });
   const highlightGraphics: Graphics[] = [];
 
@@ -654,25 +657,45 @@ export async function createPixiFrameCompositor(
     blurLayer.visible = blurPlacements.length > 0;
     highlightLayer.visible = highlightPlacements.length > 0;
     if (blurPlacements.length === 0) {
-      for (const sprite of blurSprites) sprite.visible = false;
+      for (const container of blurRegionContainers) container.visible = false;
     }
 
     blurMask.set(rect.x, rect.y, rect.width, rect.height, radius);
 
     while (blurSprites.length < blurPlacements.length) {
       const sprite = new Sprite();
-      sprite.filters = [createPrivacyBlurFilter(BLUR_REGION_STRENGTH)];
+      // Blur the entire source with Pixi's standard Gaussian implementation.
+      // The parent's rectangle mask crops the result after the filter runs.
+      const filter = new BlurFilter({ strength: BLUR_REGION_STRENGTH, quality: 8, kernelSize: 5 });
+      filter.repeatEdgePixels = true;
+      sprite.filters = [filter];
+      const mask = new Graphics();
+      const container = new Container();
+      container.addChild(sprite, mask);
+      container.mask = mask;
       blurSprites.push(sprite);
-      blurLayer.addChild(sprite);
+      blurRegionMasks.push(mask);
+      blurRegionContainers.push(container);
+      blurLayer.addChild(container);
     }
 
     blurSprites.forEach((sprite, index) => {
-      const placement = blurPlacements[index]?.placement;
+      const entry = blurPlacements[index];
+      const placement = entry?.placement;
       if (!placement) {
-        sprite.visible = false;
+        blurRegionContainers[index].visible = false;
         return;
       }
-      const { x, y, width, height } = placement.source;
+      // BlurFilter samples in raster pixels. High-resolution stills rasterize
+      // the logical scene at output scale, so the kernel must scale with it.
+      const presentation = outputPresentationPlan(
+        inputs.width, inputs.height, outputWidth, outputHeight,
+      );
+      const strength = normalizeBlurStrength(entry.region.blurStrength);
+      const filter = sprite.filters![0] as BlurFilter;
+      filter.strengthX = strength * (presentation.kind === "direct" ? presentation.scaleX : 1);
+      filter.strengthY = strength * (presentation.kind === "direct" ? presentation.scaleY : 1);
+      const x = 0, y = 0, width = source.width, height = source.height;
       const current = sprite.texture;
       if (current === Texture.EMPTY || current.source !== textureSource) {
         if (current !== Texture.EMPTY) current.destroy(false);
@@ -697,9 +720,14 @@ export async function createPixiFrameCompositor(
           current.update();
         }
       }
-      sprite.visible = true;
-      sprite.position.set(placement.dest.x, placement.dest.y);
-      sprite.setSize(placement.dest.width, placement.dest.height);
+      blurRegionContainers[index].visible = true;
+      const scaleX = rect.width / content.rw;
+      const scaleY = rect.height / content.rh;
+      sprite.position.set(rect.x - content.ox * scaleX, rect.y - content.oy * scaleY);
+      sprite.setSize(source.width * scaleX, source.height * scaleY);
+      blurRegionMasks[index].clear().rect(
+        placement.dest.x, placement.dest.y, placement.dest.width, placement.dest.height,
+      ).fill(0xffffff);
     });
 
     while (highlightGraphics.length < highlightPlacements.length) {
@@ -881,6 +909,10 @@ export async function createPixiFrameCompositor(
       // Before the renderer goes: an outstanding fence or pack buffer would
       // otherwise pin GPU memory for the life of the editor session.
       releaseAllPackSlots();
+      for (const sprite of blurSprites) {
+        if (sprite.texture !== Texture.EMPTY) sprite.texture.destroy(false);
+        sprite.texture = Texture.EMPTY;
+      }
       screenTexture.destroy();
       faceTexture.destroy();
       background.destroy();

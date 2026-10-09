@@ -11,6 +11,7 @@ import {
 
 import {
   DEFAULT_LANGUAGE,
+  LANGUAGE_STORAGE_KEY,
   getStoredLanguage,
   languageDir,
   storeLanguage,
@@ -59,8 +60,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // written by the editor — `storage` only fires in *other* documents.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== THEME_STORAGE_KEY) return;
-      setTheme(getStoredTheme());
+      if (e.key === THEME_STORAGE_KEY) setTheme(getStoredTheme());
+      if (e.key === LANGUAGE_STORAGE_KEY) setLanguageState(getStoredLanguage());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);

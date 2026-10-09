@@ -1,5 +1,14 @@
 /** English — source of truth for `TranslationKey`. */
 export const en = {
+  "fonts.delete": "Delete registered font",
+  "fonts.deleteHint": "Deletes the selected app font. Text using it returns to the system default font.",
+  "fonts.default": "System default",
+  "fonts.system": "OS fonts",
+  "fonts.app": "Capptivo fonts",
+  "fonts.register": "Register font…",
+  "fonts.refresh": "Refresh list",
+  "fonts.appOnly": "Registered fonts are available only in Capptivo.",
+  "fonts.error": "Could not load font",
   "app.name": "Capptivo_Next",
   "app.untitled": "Untitled recording",
   "app.loading": "Loading…",
@@ -164,6 +173,7 @@ export const en = {
 
   "blur.addHighlight": "Add highlight",
 
+  "blur.strength": "Blur strength",
   "blur.mask": "Mask",
 
   "blur.highlight": "Highlight",
@@ -291,6 +301,9 @@ export const en = {
   "ratio.hint.5:4": "Instagram landscape",
   "ratio.hint.21:9": "Cinematic wide",
   "ratio.hint.9:21": "Cinematic tall",
+  "timeline.empty": "No clips. Reset to restore the recording.",
+  "timeline.splitTool": "Blade tool",
+  "timeline.rippleDelete": "Delete and close gap",
   "timeline.split.on": "Click a clip or effect block to split. Esc turns this off.",
   "timeline.split.off": "Arm split, then click where to cut",
   "timeline.deleteSelected": "Delete selected fragment",
@@ -413,6 +426,11 @@ export const en = {
   "recorder.sources.displays": "Displays",
   "recorder.sources.windows": "Windows",
   "recorder.sources.empty": "No sources found.",
+  "tray.openRecorder": "Open Recorder",
+  "tray.annotateScreen": "Annotate Screen…",
+  "tray.openLibrary": "Open Library…",
+  "tray.quit": "Quit {app}",
+
   "recorder.settings.open": "Settings",
   "recorder.language": "Language",
   "recorder.hud.pause": "Pause",

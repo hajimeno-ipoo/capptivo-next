@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** French. Typed against `TranslationKey` so a missing key is a compile error. */
 export const fr: Record<TranslationKey, string> = {
+  "fonts.delete": "Supprimer la police ajoutée",
+  "fonts.deleteHint": "Supprime la police sélectionnée. Le texte qui l’utilise revient à la police système.",
+  "fonts.default": "Police système",
+  "fonts.system": "Polices du système",
+  "fonts.app": "Polices Capptivo",
+  "fonts.register": "Ajouter une police…",
+  "fonts.refresh": "Actualiser la liste",
+  "fonts.appOnly": "Les polices ajoutées sont disponibles uniquement dans Capptivo.",
+  "fonts.error": "Impossible de charger la police",
   "app.name": "Capptivo_Next",
   "app.untitled": "Enregistrement sans titre",
 
@@ -169,6 +178,7 @@ export const fr: Record<TranslationKey, string> = {
   "blur.label": "Zones floutées",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Intensité du flou",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -298,6 +308,9 @@ export const fr: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Paysage Instagram",
   "ratio.hint.21:9": "Cinéma large",
   "ratio.hint.9:21": "Cinéma vertical",
+  "timeline.empty": "Aucun clip. Réinitialisez pour restaurer l’enregistrement.",
+  "timeline.splitTool": "Outil de coupe",
+  "timeline.rippleDelete": "Supprimer et fermer l’espace",
   "timeline.split.on":
     "Cliquez sur un clip ou un effet pour le diviser. Échap pour désactiver.",
   "timeline.split.off":
@@ -425,6 +438,11 @@ export const fr: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Écrans",
   "recorder.sources.windows": "Fenêtres",
   "recorder.sources.empty": "Aucune source trouvée.",
+  "tray.openRecorder": "Ouvrir la barre d’enregistrement",
+  "tray.annotateScreen": "Annoter l’écran…",
+  "tray.openLibrary": "Ouvrir la bibliothèque…",
+  "tray.quit": "Quitter {app}",
+
   "recorder.settings.open": "Réglages",
   "recorder.language": "Langue",
   "recorder.hud.pause": "Pause",

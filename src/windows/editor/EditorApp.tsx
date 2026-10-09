@@ -3,7 +3,7 @@
  * Time editing opens the timeline below, and Back opens the in-window library.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, RectangleHorizontal, Redo2, Undo2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -41,6 +41,8 @@ import { dismissEditorSplash } from "./splash";
 import { showError } from "@/lib/toast";
 import { consumeGpuReloadedBanner } from "./render/gpuLifecycle";
 
+import { ensureFontsLoaded, refreshFontCatalog, useFontCatalog } from "./lib/fontCatalog";
+
 const SHOW_LIBRARY_EVENT = "shell://show-library";
 
 function initialShell(): "editor" | "library" {
@@ -51,6 +53,7 @@ function initialShell(): "editor" | "library" {
 
 export function EditorApp() {
   const { t } = useI18n();
+  const fonts = useFontCatalog();
   const init = useEditorStore((s) => s.init);
   const ready = useEditorStore((s) => s.ready);
   const error = useEditorStore((s) => s.error);
@@ -73,6 +76,9 @@ export function EditorApp() {
   const project = useEditorStore((s) => s.project);
   const projectId = useEditorStore((s) => s.projectId);
   const screenshotId = useEditorStore((s) => s.screenshotId);
+  const textClips = useEditorStore((s) => s.textClips);
+  const captionSettings = useEditorStore((s) => s.captionSettings);
+  const reconcileAppFonts = useEditorStore((s) => s.reconcileAppFonts);
   const aspectRatioPresetId = useEditorStore((s) => s.aspectRatioPresetId);
   const backgroundType = useEditorStore((s) => s.backgroundType);
   const historyPast = useEditorStore((s) => s.historyPast);
@@ -138,6 +144,20 @@ export function EditorApp() {
     else
       useEditorStore.setState({ ready: true, error: "No project id in URL." });
   }, [init]);
+
+  useEffect(() => {
+    void ensureFontsLoaded().catch(() => undefined);
+    const unlisten = listen("fonts://changed", () => {
+      void refreshFontCatalog().catch(() => undefined);
+    });
+    return () => { void unlisten.then((fn) => fn()); };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (ready && fonts.ready && !fonts.error) {
+      reconcileAppFonts(fonts.appFonts.map((font) => font.family));
+    }
+  }, [ready, fonts.ready, fonts.error, fonts.appFonts, textClips, captionSettings, reconcileAppFonts]);
 
   // One-shot banner after a dead-GPU reload (export reclaim failed).
   useEffect(() => {
@@ -263,7 +283,7 @@ export function EditorApp() {
     [init],
   );
 
-  const kept = segments.length > 0 ? totalKeptDuration(segments) : duration;
+  const kept = totalKeptDuration(segments);
 
   const renameTitle = useCallback((next: string) => {
     const { projectId: pid, project: p } = useEditorStore.getState();
@@ -289,6 +309,7 @@ export function EditorApp() {
     let sink: ExportSink | null = null;
     setScreenshotExporting(true);
     try {
+      await ensureFontsLoaded();
       const canvas = screenshotFrameRef.current?.();
       if (!canvas) throw new Error("画像の描画が完了していません");
       const path = await save({
@@ -457,7 +478,14 @@ export function EditorApp() {
             <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {error ? (
                 <p className="p-6 text-sm text-destructive">{error}</p>
-              ) : !ready ? (
+              ) : fonts.error ? (
+                <div className="space-y-2 p-6 text-sm">
+                  <p className="text-destructive">{t("fonts.error")}: {fonts.error}</p>
+                  <Button variant="secondary" onClick={() => { void refreshFontCatalog().catch(() => undefined); }}>
+                    {t("fonts.refresh")}
+                  </Button>
+                </div>
+              ) : !ready || !fonts.ready ? (
                 <p className="p-6 text-sm text-muted-foreground">
                   {t("app.loading")}
                 </p>

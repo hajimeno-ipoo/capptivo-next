@@ -22,7 +22,7 @@ export type CaptionSettings = {
 const LEGACY_CAPTION_FONT_FAMILY =
   'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
-/** Subtitle font presets (canvas + preview). Keep in sync with `editor.html` font link. */
+/** Existing caption font stacks, retained for saved projects and the shared picker. */
 export const CAPTION_FONT_OPTIONS = [
   { label: "System UI", value: "system-ui, -apple-system, sans-serif" },
   { label: "Poppins", value: '"Poppins", system-ui, sans-serif' },
@@ -33,22 +33,11 @@ export const CAPTION_FONT_OPTIONS = [
   },
 ] as const;
 
-const CAPTION_FONT_VALUES = new Set<string>(
-  CAPTION_FONT_OPTIONS.map((o) => o.value),
-);
-
 function normalizeCaptionFontFamily(raw: string): string {
-  if (CAPTION_FONT_VALUES.has(raw)) return raw;
-  if (raw === LEGACY_CAPTION_FONT_FAMILY) {
+  if (!raw || raw === LEGACY_CAPTION_FONT_FAMILY) {
     return DEFAULT_CAPTION_SETTINGS.fontFamily;
   }
-  const lower = raw.toLowerCase();
-  if (lower.includes("poppins")) return CAPTION_FONT_OPTIONS[1].value;
-  if (lower.includes("inter")) return CAPTION_FONT_OPTIONS[2].value;
-  if (lower.includes("mono") || lower.includes("menlo") || lower.includes("consolas")) {
-    return CAPTION_FONT_OPTIONS[3].value;
-  }
-  return DEFAULT_CAPTION_SETTINGS.fontFamily;
+  return raw;
 }
 
 export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {

@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** German. Typed against `TranslationKey` so a missing key is a compile error. */
 export const de: Record<TranslationKey, string> = {
+  "fonts.delete": "Hinzugefügte Schrift löschen",
+  "fonts.deleteHint": "Löscht die ausgewählte Schrift. Text, der sie verwendet, erhält die Systemschrift.",
+  "fonts.default": "Systemstandard",
+  "fonts.system": "Systemschriften",
+  "fonts.app": "Capptivo-Schriften",
+  "fonts.register": "Schrift hinzufügen…",
+  "fonts.refresh": "Liste aktualisieren",
+  "fonts.appOnly": "Hinzugefügte Schriften sind nur in Capptivo verfügbar.",
+  "fonts.error": "Schrift konnte nicht geladen werden",
   "app.name": "Capptivo_Next",
   "app.untitled": "Unbenannte Aufnahme",
   "app.loading": "Wird geladen…",
@@ -161,6 +170,7 @@ export const de: Record<TranslationKey, string> = {
   "blur.label": "Unschärfebereiche",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Unschärfestärke",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -290,6 +300,9 @@ export const de: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Instagram Querformat",
   "ratio.hint.21:9": "Kino breit",
   "ratio.hint.9:21": "Kino hoch",
+  "timeline.empty": "Keine Clips. Zurücksetzen stellt die Aufnahme wieder her.",
+  "timeline.splitTool": "Schneidewerkzeug",
+  "timeline.rippleDelete": "Löschen und Lücke schließen",
   "timeline.split.on":
     "Auf einen Clip oder Effekt klicken zum Teilen. Esc beendet den Modus.",
   "timeline.split.off": "Teilen aktivieren, dann klicken, wo geschnitten wird",
@@ -417,6 +430,11 @@ export const de: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Bildschirme",
   "recorder.sources.windows": "Fenster",
   "recorder.sources.empty": "Keine Quellen gefunden.",
+  "tray.openRecorder": "Aufnahmeleiste öffnen",
+  "tray.annotateScreen": "Bildschirm kommentieren…",
+  "tray.openLibrary": "Mediathek öffnen…",
+  "tray.quit": "{app} beenden",
+
   "recorder.settings.open": "Einstellungen",
   "recorder.language": "Sprache",
   "recorder.hud.pause": "Pause",

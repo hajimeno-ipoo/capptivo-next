@@ -30,6 +30,10 @@ pub const EDITOR_LABEL_PREFIX: &str = "editor:";
 
 /// Frontend listens on this channel to swap the editor shell to the recordings grid.
 pub const SHOW_LIBRARY_EVENT: &str = "shell://show-library";
+/// Expand the recorder's existing settings section after the toolbar is ready.
+pub const SHOW_RECORDER_SETTINGS_EVENT: &str = "recorder://show-settings";
+/// A newly created WebView may not have registered its listener yet.
+static RECORDER_SETTINGS_PENDING: AtomicBool = AtomicBool::new(false);
 /// Annotation overlay shown/hidden — payload `true` on show, `false` on hide.
 /// The overlay WebView is reused (show/hide, never closed), so its idle
 /// cursor-poll would otherwise keep running while hidden; it gates on this.
@@ -1321,6 +1325,23 @@ pub fn show_recorder_popover(app: &AppHandle) -> tauri::Result<()> {
         return Ok(());
     }
     create_recorder_popover(app)
+}
+
+/// Present setup settings, retaining the live HUD until capture becomes idle.
+pub fn show_recorder_settings(app: &AppHandle) -> tauri::Result<()> {
+    RECORDER_SETTINGS_PENDING.store(true, Ordering::Release);
+    show_recorder_popover(app)?;
+    app.emit_to(RECORDER_LABEL, SHOW_RECORDER_SETTINGS_EVENT, ())
+}
+
+/// The toolbar calls this after registering its listener. Do not consume a
+/// request during countdown / capture; its next idle mount will pick it up.
+#[tauri::command]
+pub fn take_recorder_settings_request(app: AppHandle) -> bool {
+    if recorder_capture_active(&app) {
+        return false;
+    }
+    RECORDER_SETTINGS_PENDING.swap(false, Ordering::AcqRel)
 }
 
 /// Toggle the frameless recorder popover attached to the tray. Creates it lazily.

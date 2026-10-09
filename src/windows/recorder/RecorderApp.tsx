@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "../../ipc/bindings";
 import { RecorderBarAnchor } from "./RecorderErrorToast";
@@ -38,6 +39,23 @@ const BAR_CROSSFADE_MS = 300;
 const BAR_BOTTOM_MARGIN_PX = 20;
 
 export function RecorderApp() {
+  const { t } = useI18n();
+  useEffect(() => {
+    if (!isTauri()) return;
+    void commands.setTrayLabels({
+      openRecorder: t("tray.openRecorder"),
+      annotateScreen: t("tray.annotateScreen"),
+      openLibrary: t("tray.openLibrary"),
+      settings: `${t("recorder.settings.open")}…`,
+      checkUpdates: t("config.about.checkUpdates"),
+      quit: t("tray.quit", { app: "Capptivo_Next" }),
+      pause: t("recorder.hud.pause"),
+      resume: t("recorder.hud.resume"),
+      stop: t("recorder.hud.stop"),
+      openAnnotation: t("recorder.hud.annotate.show"),
+      finalizing: t("recorder.hud.finalizing"),
+    }).catch((error) => console.error("Failed to update tray language", error));
+  }, [t]);
   const init = useRecorderStore((s) => s.init);
   const status = useRecorderStore((s) => s.state.status);
   const lastError = useRecorderStore((s) => s.lastError);

@@ -1,7 +1,9 @@
 import {
   computePerspectiveCorners,
   hasPerspectiveEffect,
+  createPerspectivePlaneMapping,
 } from "./perspectiveTransform.ts";
+import { PerspectivePlaneGeometry } from "pixi.js";
 import { PERSPECTIVE_PIVOT_POINTS } from "../../../engine/perspectiveMotion.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -88,6 +90,46 @@ for (const pivot of PERSPECTIVE_PIVOT_POINTS) {
       Math.abs(selectedY - 1080 * pivot.y) < 1e-6,
     `${pivot.id} stays fixed during Z rotation`,
   );
+}
+
+
+// Compare the selection mapping against the actual compositor mesh, including
+// interior vertices (matching only the four corners misses a wrong projection).
+for (const pivot of PERSPECTIVE_PIVOT_POINTS) {
+  for (const look of [
+    flat,
+    { ...flat, tiltX: 12, tiltY: -18, tiltZ: -4, perspectiveDistance: 1100 },
+    { ...flat, tiltX: 45, tiltY: 45, tiltZ: 30, perspectiveDistance: 1 },
+    { ...flat, tiltX: -45, tiltY: -45, tiltZ: -30, perspectiveDistance: 3000 },
+  ]) {
+    const width = 1920;
+    const height = 1080;
+    const params = { ...look, pivot: pivot.id };
+    const corners = computePerspectiveCorners(width, height, params);
+    const mapping = createPerspectivePlaneMapping(width, height, params);
+    assert(mapping, "non-degenerate authored plane has a mapping");
+    const mesh = new PerspectivePlaneGeometry({ width, height, verticesX: 97, verticesY: 65 });
+    mesh.setCorners(
+      corners.topLeft.x, corners.topLeft.y, corners.topRight.x, corners.topRight.y,
+      corners.bottomRight.x, corners.bottomRight.y, corners.bottomLeft.x, corners.bottomLeft.y,
+    );
+    const vertices = mesh.getBuffer("aPosition").data;
+    for (const row of [0, 1, 13, 32, 63, 64]) {
+      for (const column of [0, 1, 17, 48, 80, 96]) {
+        const source = { x: column / 96, y: row / 64 };
+        const projected = mapping.project(source);
+        assert(projected, "mesh point can be projected");
+        const index = (row * 97 + column) * 2;
+        assert(Math.abs(projected.x * width - vertices[index]) < 0.002 &&
+          Math.abs(projected.y * height - vertices[index + 1]) < 0.002,
+        "overlay matches actual Pixi mesh at interior vertices and every pivot");
+        const restored = mapping.unproject(projected);
+        assert(restored && Math.abs(restored.x - source.x) < 1e-9 &&
+          Math.abs(restored.y - source.y) < 1e-9, "pointer can return to the authored plane");
+      }
+    }
+    mesh.destroy();
+  }
 }
 
 console.log("perspectiveTransform.selfcheck: ok");

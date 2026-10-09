@@ -4,22 +4,16 @@
 
 import { Button } from "@/components/ui/button";
 import { FieldLabelWithHint } from "@/components/ui/field-label-with-hint";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
-  CAPTION_FONT_OPTIONS,
   captionColorPickerValue,
   captionSwatchColor,
   DEFAULT_CAPTION_SETTINGS,
   type CaptionSettings,
 } from "@/captions/settings";
+import { useI18n } from "@/lib/settings";
+import { FontPicker } from "./FontPicker";
 
 type Props = {
   captionSettings: CaptionSettings;
@@ -66,6 +60,7 @@ export function CaptionStyleControls({
   wordTimingsAvailable,
   onChange,
 }: Props) {
+  const { t } = useI18n();
   if (!hasCaptions) return null;
 
   return (
@@ -241,24 +236,13 @@ export function CaptionStyleControls({
 
       <div className="space-y-1">
         <FieldLabelWithHint htmlFor="cap-font" className="text-xs" hint="Subtitle typeface.">
-          Font
+          {t("text.font")}
         </FieldLabelWithHint>
-        <Select
+        <FontPicker
+          id="cap-font"
           value={captionSettings.fontFamily}
-          onValueChange={(v) => onChange({ fontFamily: v })}
-        >
-          <SelectTrigger id="cap-font" className="h-9">
-            <SelectValue placeholder="Font" />
-          </SelectTrigger>
-          <SelectContent>
-            {CAPTION_FONT_OPTIONS.map((font) => (
-              <SelectItem key={font.value} value={font.value}>
-                {font.label}
-                {font.value === DEFAULT_CAPTION_SETTINGS.fontFamily ? " (default)" : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(fontFamily) => onChange({ fontFamily })}
+        />
       </div>
 
       <div className="space-y-1">

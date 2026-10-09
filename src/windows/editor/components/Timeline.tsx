@@ -37,6 +37,7 @@ import { supportsEditorFeature } from "../lib/editorMode";
 import { ASPECT_RATIO_PRESETS, type AspectRatioPresetId } from "../lib/composition";
 import { formatTimelineTime, MIN_SEGMENT_LENGTH } from "../lib/timelineMath";
 import { buildTimelineRuler } from "../lib/timelineRuler";
+import { createEditedTimeline } from "../lib/editedTimeline";
 import { useEditorStore } from "../store";
 import { VideoTimelineBlock } from "./VideoTimelineBlock";
 import { ZoomTimelineBlock } from "./ZoomTimelineBlock";
@@ -88,7 +89,7 @@ type DragState =
   | { kind: "playhead" }
   | { kind: "gap-move"; gapIndex: number; offset: number; length: number; startX: number }
   | { kind: "gap-edge"; gapIndex: number; edge: "start" | "end" }
-  | { kind: "segment-edge"; segmentId: string; edge: "start" | "end" }
+  | { kind: "segment-edge"; segmentId: string; edge: "start" | "end"; sourceTime: number; pointerTime: number }
   | {
       kind: "zoom-move";
       fragmentId: string;
@@ -216,15 +217,25 @@ export function Timeline({
   const targetZoomRef = useRef(MIN_ZOOM);
   const pendingScrollRef = useRef<number | null>(null);
 
-  const safeDuration = duration > 0 ? duration : 1;
+  const timeline = useMemo(() => createEditedTimeline(segments, duration), [segments, duration]);
+  const dragTimelineRef = useRef<typeof timeline | null>(null);
+  const safeDuration = timeline.duration > 0 ? timeline.duration : 1;
+  const rangeStyle = (start: number, end: number) => ({
+    left: `${timeline.toTimeline(start) / safeDuration * 100}%`,
+    width: `${(timeline.toTimeline(end) - timeline.toTimeline(start)) / safeDuration * 100}%`,
+  });
+  const visibleRange = (start: number, end: number) => timeline.toTimeline(end) > timeline.toTimeline(start);
+  const displayedRange = <T extends { start: number; end: number }>(range: T): T => ({
+    ...range, start: timeline.toTimeline(range.start), end: timeline.toTimeline(range.end),
+  });
   const ready = duration > 0;
   const trackWidth = Math.max(1, Math.round(containerWidth * uiZoom));
-  const hasZoom = zoomFragments.length > 0;
-  const hasPerspective = perspectiveFragments.length > 0;
-  const hasMask = blurRegions.some((region) => region.kind === "blur");
-  const hasHighlight = blurRegions.some((region) => region.kind === "highlight");
-  const hasSpeed = speedEnabled && speedRanges.length > 0;
-  const hasText = textClips.length > 0;
+  const hasZoom = zoomFragments.some((f) => visibleRange(f.start, f.end));
+  const hasPerspective = perspectiveFragments.some((f) => visibleRange(f.start, f.end));
+  const hasMask = blurRegions.some((region) => region.kind === "blur" && visibleRange(region.start, region.end));
+  const hasHighlight = blurRegions.some((region) => region.kind === "highlight" && visibleRange(region.start, region.end));
+  const hasSpeed = speedEnabled && speedRanges.some((f) => visibleRange(f.start, f.end));
+  const hasText = textClips.some((f) => visibleRange(f.start, f.end));
 
   // The main clip is always the first lane. Optional lanes occupy space only
   // while they contain an editable item, including after undo or loading a project.
@@ -314,16 +325,16 @@ export function Timeline({
     [segments, safeDuration],
   );
 
-  const clientToTime = useCallback(
-    (clientX: number) => {
-      const el = trackRef.current;
-      if (!el || duration <= 0) return 0;
-      const rect = el.getBoundingClientRect();
-      const x = Math.min(Math.max(0, clientX - rect.left), rect.width);
-      return (x / rect.width) * duration;
-    },
-    [duration],
-  );
+  const clientToTimelineTime = useCallback((clientX: number) => {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const x = Math.min(Math.max(0, clientX - rect.left), rect.width);
+    return (x / rect.width) * (dragTimelineRef.current ?? timeline).duration;
+  }, [timeline]);
+  const clientToTime = useCallback((clientX: number, bias: "before" | "after" = "after") =>
+    (dragTimelineRef.current ?? timeline).toSource(clientToTimelineTime(clientX), bias),
+  [clientToTimelineTime, timeline]);
 
   const selectedExists =
     (sourceTrimEnabled && selectedGapIndex !== null) ||
@@ -351,6 +362,11 @@ export function Timeline({
         redo();
         return;
       }
+      if (!e.metaKey && !e.ctrlKey && (e.key.toLowerCase() === "b" || e.key.toLowerCase() === "v")) {
+        e.preventDefault();
+        setSplitTool(sourceTrimEnabled && e.key.toLowerCase() === "b");
+        return;
+      }
       if (e.key === "Escape") {
         setSplitTool(false);
         setAddOpen(false);
@@ -376,13 +392,13 @@ export function Timeline({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [addFragment, cutAtPlayhead, deleteSelected, redo, selectedExists, undo]);
+  }, [addFragment, cutAtPlayhead, deleteSelected, redo, selectedExists, sourceTrimEnabled, undo]);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       const active = dragRef.current;
       if (!active) return;
-      const t = clientToTime(e.clientX);
+      const t = clientToTime(e.clientX, "edge" in active && active.edge === "end" ? "before" : "after");
 
       if (active.kind === "playhead") {
         onSeek(t);
@@ -393,7 +409,8 @@ export function Timeline({
         return;
       }
       if (active.kind === "segment-edge") {
-        resizeSegment(active.segmentId, active.edge, t);
+        resizeSegment(active.segmentId, active.edge,
+          active.sourceTime + clientToTimelineTime(e.clientX) - active.pointerTime);
         return;
       }
       if (active.kind === "gap-move") {
@@ -424,17 +441,11 @@ export function Timeline({
       }
       if (active.kind === "zoom-move") {
         if (Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) return;
-        let nextStart = t - active.offset;
-        let nextEnd = nextStart + active.length;
-        if (nextStart < 0) {
-          nextEnd -= nextStart;
-          nextStart = 0;
-        }
-        if (nextEnd > duration) {
-          const over = nextEnd - duration;
-          nextStart = Math.max(0, nextStart - over);
-          nextEnd = duration;
-        }
+        const mapping = dragTimelineRef.current ?? timeline;
+        const start = Math.max(0, Math.min(mapping.duration - active.length,
+          clientToTimelineTime(e.clientX) - active.offset));
+        const nextStart = mapping.toSource(start);
+        const nextEnd = mapping.toSource(start + active.length, "before");
         moveZoomFragment(active.fragmentId, nextStart, nextEnd);
         return;
       }
@@ -450,17 +461,11 @@ export function Timeline({
       }
       if (active.kind === "perspective-move") {
         if (Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) return;
-        let nextStart = t - active.offset;
-        let nextEnd = nextStart + active.length;
-        if (nextStart < 0) {
-          nextEnd -= nextStart;
-          nextStart = 0;
-        }
-        if (nextEnd > duration) {
-          const over = nextEnd - duration;
-          nextStart = Math.max(0, nextStart - over);
-          nextEnd = duration;
-        }
+        const mapping = dragTimelineRef.current ?? timeline;
+        const start = Math.max(0, Math.min(mapping.duration - active.length,
+          clientToTimelineTime(e.clientX) - active.offset));
+        const nextStart = mapping.toSource(start);
+        const nextEnd = mapping.toSource(start + active.length, "before");
         movePerspectiveFragment(active.fragmentId, nextStart, nextEnd);
         return;
       }
@@ -473,17 +478,11 @@ export function Timeline({
       }
       if (active.kind === "overlay-move") {
         if (Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) return;
-        let nextStart = t - active.offset;
-        let nextEnd = nextStart + active.length;
-        if (nextStart < 0) {
-          nextEnd -= nextStart;
-          nextStart = 0;
-        }
-        if (nextEnd > duration) {
-          const over = nextEnd - duration;
-          nextStart = Math.max(0, nextStart - over);
-          nextEnd = duration;
-        }
+        const mapping = dragTimelineRef.current ?? timeline;
+        const start = Math.max(0, Math.min(mapping.duration - active.length,
+          clientToTimelineTime(e.clientX) - active.offset));
+        const nextStart = mapping.toSource(start);
+        const nextEnd = mapping.toSource(start + active.length, "before");
         moveBlurRegion(active.regionId, nextStart, nextEnd);
         return;
       }
@@ -496,17 +495,11 @@ export function Timeline({
       }
       if (active.kind === "speed-move") {
         if (Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) return;
-        let nextStart = t - active.offset;
-        let nextEnd = nextStart + active.length;
-        if (nextStart < 0) {
-          nextEnd -= nextStart;
-          nextStart = 0;
-        }
-        if (nextEnd > duration) {
-          const over = nextEnd - duration;
-          nextStart = Math.max(0, nextStart - over);
-          nextEnd = duration;
-        }
+        const mapping = dragTimelineRef.current ?? timeline;
+        const start = Math.max(0, Math.min(mapping.duration - active.length,
+          clientToTimelineTime(e.clientX) - active.offset));
+        const nextStart = mapping.toSource(start);
+        const nextEnd = mapping.toSource(start + active.length, "before");
         moveSpeedRange(active.rangeId, nextStart, nextEnd);
         return;
       }
@@ -519,22 +512,18 @@ export function Timeline({
       }
       if (active.kind === "text-move") {
         if (Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) return;
-        let nextStart = t - active.offset;
-        let nextEnd = nextStart + active.length;
-        if (nextStart < 0) {
-          nextEnd -= nextStart;
-          nextStart = 0;
-        }
-        if (nextEnd > duration) {
-          const over = nextEnd - duration;
-          nextStart = Math.max(0, nextStart - over);
-          nextEnd = duration;
-        }
+        const mapping = dragTimelineRef.current ?? timeline;
+        const start = Math.max(0, Math.min(mapping.duration - active.length,
+          clientToTimelineTime(e.clientX) - active.offset));
+        const nextStart = mapping.toSource(start);
+        const nextEnd = mapping.toSource(start + active.length, "before");
         moveTextClip(active.clipId, nextStart, nextEnd);
       }
     },
     [
       clientToTime,
+      clientToTimelineTime,
+      timeline,
       duration,
       moveTrimGap,
       moveZoomFragment,
@@ -557,6 +546,7 @@ export function Timeline({
     (e: React.PointerEvent) => {
       const active = dragRef.current;
       dragRef.current = null;
+      dragTimelineRef.current = null;
       (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
 
       if (!active) return;
@@ -564,7 +554,7 @@ export function Timeline({
       const seekClipStart = (start: number) => {
         const { isPlaying, setPlaying } = useEditorStore.getState();
         if (isPlaying) setPlaying(false);
-        onSeek(start);
+        onSeek(timeline.toSource(timeline.toTimeline(start)));
       };
 
       if (active.kind === "gap-move" && Math.abs(e.clientX - active.startX) < CLICK_DRAG_PX) {
@@ -614,6 +604,7 @@ export function Timeline({
     },
     [
       endTimelineEdit,
+      timeline,
       onSeek,
       zoomFragments,
       perspectiveFragments,
@@ -633,6 +624,7 @@ export function Timeline({
     e.stopPropagation();
     e.preventDefault();
     dragRef.current = state;
+    dragTimelineRef.current = timeline;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     if (state.kind !== "playhead") {
       beginTimelineEdit();
@@ -654,15 +646,13 @@ export function Timeline({
       if (laneY < CLIP_TOP) return;
 
       if (laneY >= CLIP_TOP && laneY < zoomTop) {
-        if (splitAt({ kind: "trim", time: t })) setSplitTool(false);
+        splitAt({ kind: "trim", time: t });
         return;
       }
 
       if (laneY >= zoomTop && laneY < perspectiveTop) {
         const zoomHit = zoomFragments.find((f) => t >= f.start && t <= f.end);
-        if (zoomHit && splitAt({ kind: "zoom", fragmentId: zoomHit.id, time: t })) {
-          setSplitTool(false);
-        }
+        if (zoomHit) splitAt({ kind: "zoom", fragmentId: zoomHit.id, time: t });
         return;
       }
 
@@ -671,10 +661,9 @@ export function Timeline({
           (fragment) => t >= fragment.start && t <= fragment.end,
         );
         if (
-          perspectiveHit &&
-          splitAt({ kind: "perspective", fragmentId: perspectiveHit.id, time: t })
+          perspectiveHit
         ) {
-          setSplitTool(false);
+          splitAt({ kind: "perspective", fragmentId: perspectiveHit.id, time: t });
         }
         return;
       }
@@ -683,9 +672,7 @@ export function Timeline({
         const maskHit = blurRegions.find(
           (region) => region.kind === "blur" && t >= region.start && t <= region.end,
         );
-        if (maskHit && splitAt({ kind: "overlay", fragmentId: maskHit.id, time: t })) {
-          setSplitTool(false);
-        }
+        if (maskHit) splitAt({ kind: "overlay", fragmentId: maskHit.id, time: t });
         return;
       }
 
@@ -694,25 +681,20 @@ export function Timeline({
           (region) => region.kind === "highlight" && t >= region.start && t <= region.end,
         );
         if (
-          highlightHit &&
-          splitAt({ kind: "overlay", fragmentId: highlightHit.id, time: t })
+          highlightHit
         ) {
-          setSplitTool(false);
+          splitAt({ kind: "overlay", fragmentId: highlightHit.id, time: t });
         }
         return;
       }
       if (laneY >= speedTop && laneY < textTop) {
         const speedHit = speedRanges.find((range) => t >= range.start && t <= range.end);
-        if (speedHit && splitAt({ kind: "speed", fragmentId: speedHit.id, time: t })) {
-          setSplitTool(false);
-        }
+        if (speedHit) splitAt({ kind: "speed", fragmentId: speedHit.id, time: t });
         return;
       }
       if (laneY >= textTop && laneY < trackHeight) {
         const textHit = textClips.find((clip) => t >= clip.start && t <= clip.end);
-        if (textHit && splitAt({ kind: "text", fragmentId: textHit.id, time: t })) {
-          setSplitTool(false);
-        }
+        if (textHit) splitAt({ kind: "text", fragmentId: textHit.id, time: t });
         return;
       }
 
@@ -734,7 +716,7 @@ export function Timeline({
     const apply = (time: number) => {
       const el = playheadRef.current;
       if (!el) return;
-      const pct = Math.min(100, Math.max(0, (time / safeDuration) * 100));
+      const pct = Math.min(100, Math.max(0, (timeline.toTimeline(time) / safeDuration) * 100));
       el.style.transform = `translate3d(${pct}%, 0, 0)`;
     };
 
@@ -773,12 +755,12 @@ export function Timeline({
       unsub();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [safeDuration, videoRef]);
+  }, [safeDuration, timeline, videoRef]);
 
   const pixelsPerSecond = trackWidth / safeDuration;
   const rulerTicks = useMemo(
-    () => buildTimelineRuler(safeDuration, pixelsPerSecond),
-    [safeDuration, pixelsPerSecond],
+    () => timeline.duration > 0 ? buildTimelineRuler(safeDuration, pixelsPerSecond) : [],
+    [safeDuration, pixelsPerSecond, timeline.duration],
   );
 
   if (duration <= 0) {
@@ -845,15 +827,16 @@ export function Timeline({
           <button
             type="button"
             aria-pressed={splitTool}
-            title={splitTool ? t("timeline.split.on") : t("timeline.split.off")}
+            title={`${splitTool ? t("timeline.split.on") : t("timeline.split.off")} (B)`}
+            aria-label={t("timeline.splitTool")}
             onClick={() => setSplitTool((v) => !v)}
-            disabled={duration <= 0 || !sourceTrimEnabled}
+            disabled={timeline.duration <= 0 || !sourceTrimEnabled}
             className={cn(
               "flex h-full items-center justify-center border-r border-border px-3.5 transition-colors",
               splitTool
                 ? "bg-background text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                 : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-              (duration <= 0 || !sourceTrimEnabled) && "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
+              (timeline.duration <= 0 || !sourceTrimEnabled) && "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
             )}
           >
             <Scissors className="size-4.5" strokeWidth={2} />
@@ -870,7 +853,7 @@ export function Timeline({
               deleteSelected();
             }}
             className="flex h-full items-center justify-center px-3.5 text-muted-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label={t("timeline.deleteSelected")}
+            aria-label={selectedSegmentId ? t("timeline.rippleDelete") : t("timeline.deleteSelected")}
           >
             <Trash2 className="size-4.5" strokeWidth={2} />
           </button>
@@ -999,6 +982,12 @@ export function Timeline({
                 splitTool ? "cursor-crosshair" : "cursor-default",
               )}
               style={{ width: trackWidth, minWidth: "100%", height: trackHeight }}
+              onPointerDownCapture={(e) => {
+                if (splitTool) { e.stopPropagation(); e.preventDefault(); }
+              }}
+              onClickCapture={(e) => {
+                if (splitTool) { e.stopPropagation(); onTrackClick(e); }
+              }}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerDown={(e) => {
@@ -1061,22 +1050,9 @@ export function Timeline({
               className="pointer-events-none absolute inset-x-0 z-1 flex items-center justify-center text-[11px] text-muted-foreground"
               style={{ top: CLIP_TOP, height: LANE_H }}
             >
-              {t("timeline.pressC")}
+              {t("timeline.empty")}
             </div>
           )}
-
-          {sourceTrimEnabled && gaps.map((gap) => (
-            <div
-              key={`cut-${gap.start.toFixed(3)}-${gap.end.toFixed(3)}`}
-              className="pointer-events-none absolute z-1 border-y border-dashed border-foreground/10 bg-background/35"
-              style={{
-                top: CLIP_TOP + BLOCK_INSET,
-                height: BLOCK_H,
-                left: `${(gap.start / safeDuration) * 100}%`,
-                width: `${((gap.end - gap.start) / safeDuration) * 100}%`,
-              }}
-            />
-          ))}
 
           {/* Primary kept-video clips */}
           {segments.map((segment) => {
@@ -1087,32 +1063,26 @@ export function Timeline({
                 data-block
                 className={cn(
                   "absolute z-10",
-                  sourceTrimEnabled ? "cursor-pointer" : "cursor-default",
+                  splitTool ? "cursor-crosshair" : sourceTrimEnabled ? "cursor-pointer" : "cursor-default",
                 )}
                 style={{
                   top: CLIP_TOP + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(segment.start / safeDuration) * 100}%`,
-                  width: `${((segment.end - segment.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(segment.start, segment.end),
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!sourceTrimEnabled) return;
-                  if (splitTool) {
-                    if (splitAt({ kind: "trim", time: clientToTime(e.clientX) })) {
-                      setSplitTool(false);
-                    }
-                    return;
-                  }
-                  selectSegment(segment.id);
+                  if (sourceTrimEnabled) selectSegment(segment.id);
                 }}
               >
                 <VideoTimelineBlock
-                  segment={segment}
+                  segment={displayedRange(segment)}
                   selected={selected}
-                  resizable={sourceTrimEnabled}
+                  resizable={sourceTrimEnabled && !splitTool}
                   onResizePointerDown={(edge, e) =>
-                    startDrag(e, { kind: "segment-edge", segmentId: segment.id, edge })
+                    startDrag(e, { kind: "segment-edge", segmentId: segment.id, edge,
+                      sourceTime: edge === "start" ? segment.start : segment.end,
+                      pointerTime: clientToTimelineTime(e.clientX) })
                   }
                 />
               </div>
@@ -1120,18 +1090,17 @@ export function Timeline({
           })}
 
           {/* Zoom fragments */}
-          {zoomFragments.map((frag) => {
+          {zoomFragments.filter((frag) => visibleRange(frag.start, frag.end)).map((frag) => {
             const selected = frag.id === selectedZoomFragmentId;
             return (
               <div
                 key={frag.id}
                 data-block
-                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
+                className={cn("absolute z-10", splitTool ? "cursor-crosshair" : isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: zoomTop + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(frag.start / safeDuration) * 100}%`,
-                  width: `${((frag.end - frag.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(frag.start, frag.end),
                 }}
                 onPointerDown={(e) => {
                   if (isScreenshot) {
@@ -1145,23 +1114,20 @@ export function Timeline({
                   startDrag(e, {
                     kind: "zoom-move",
                     fragmentId: frag.id,
-                    offset: Math.max(0, pointerTime - frag.start),
-                    length: Math.max(MIN_SEGMENT_LENGTH, frag.end - frag.start),
+                    offset: Math.max(0, timeline.toTimeline(pointerTime) - timeline.toTimeline(frag.start)),
+                    length: timeline.toTimeline(frag.end) - timeline.toTimeline(frag.start),
                     startX: e.clientX,
                   });
                 }}
                 onClick={(e) => {
-                  if (!splitTool) return;
                   e.stopPropagation();
-                  if (splitAt({ kind: "zoom", fragmentId: frag.id, time: clientToTime(e.clientX) })) {
-                    setSplitTool(false);
-                  }
+
                 }}
               >
                 <ZoomTimelineBlock
-                  fragment={frag}
+                  fragment={displayedRange(frag)}
                   selected={selected}
-                  resizable={!isScreenshot}
+                  resizable={!isScreenshot && !splitTool}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, {
                       kind: "zoom-edge",
@@ -1175,18 +1141,17 @@ export function Timeline({
           })}
 
           {/* Perspective fragments */}
-          {perspectiveFragments.map((fragment) => {
+          {perspectiveFragments.filter((fragment) => visibleRange(fragment.start, fragment.end)).map((fragment) => {
             const selected = fragment.id === selectedPerspectiveFragmentId;
             return (
               <div
                 key={fragment.id}
                 data-block
-                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
+                className={cn("absolute z-10", splitTool ? "cursor-crosshair" : isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: perspectiveTop + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(fragment.start / safeDuration) * 100}%`,
-                  width: `${((fragment.end - fragment.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(fragment.start, fragment.end),
                 }}
                 onPointerDown={(e) => {
                   if (isScreenshot) {
@@ -1200,29 +1165,20 @@ export function Timeline({
                   startDrag(e, {
                     kind: "perspective-move",
                     fragmentId: fragment.id,
-                    offset: Math.max(0, pointerTime - fragment.start),
-                    length: Math.max(MIN_SEGMENT_LENGTH, fragment.end - fragment.start),
+                    offset: Math.max(0, timeline.toTimeline(pointerTime) - timeline.toTimeline(fragment.start)),
+                    length: timeline.toTimeline(fragment.end) - timeline.toTimeline(fragment.start),
                     startX: e.clientX,
                   });
                 }}
                 onClick={(e) => {
-                  if (!splitTool) return;
                   e.stopPropagation();
-                  if (
-                    splitAt({
-                      kind: "perspective",
-                      fragmentId: fragment.id,
-                      time: clientToTime(e.clientX),
-                    })
-                  ) {
-                    setSplitTool(false);
-                  }
+
                 }}
               >
                 <PerspectiveTimelineBlock
-                  fragment={fragment}
+                  fragment={displayedRange(fragment)}
                   selected={selected}
-                  resizable={!isScreenshot}
+                  resizable={!isScreenshot && !splitTool}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, {
                       kind: "perspective-edge",
@@ -1236,19 +1192,18 @@ export function Timeline({
           })}
 
           {/* Time-bounded masks and highlights, each in its own lane */}
-          {blurRegions.map((region) => {
+          {blurRegions.filter((region) => visibleRange(region.start, region.end)).map((region) => {
             const selected = region.id === selectedBlurRegionId;
             const laneTop = region.kind === "highlight" ? highlightTop : maskTop;
             return (
               <div
                 key={region.id}
                 data-block
-                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
+                className={cn("absolute z-10", splitTool ? "cursor-crosshair" : isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: laneTop + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(region.start / safeDuration) * 100}%`,
-                  width: `${((region.end - region.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(region.start, region.end),
                 }}
                 onPointerDown={(e) => {
                   if (isScreenshot) {
@@ -1262,27 +1217,20 @@ export function Timeline({
                   startDrag(e, {
                     kind: "overlay-move",
                     regionId: region.id,
-                    offset: Math.max(0, pointerTime - region.start),
-                    length: Math.max(0.05, region.end - region.start),
+                    offset: Math.max(0, timeline.toTimeline(pointerTime) - timeline.toTimeline(region.start)),
+                    length: timeline.toTimeline(region.end) - timeline.toTimeline(region.start),
                     startX: e.clientX,
                   });
                 }}
                 onClick={(e) => {
-                  if (splitTool) {
-                    e.stopPropagation();
-                    if (splitAt({ kind: "overlay", fragmentId: region.id, time: clientToTime(e.clientX) })) {
-                      setSplitTool(false);
-                    }
-                  } else {
-                    e.stopPropagation();
-                    selectBlurRegion(region.id);
-                  }
+                  e.stopPropagation();
+                  selectBlurRegion(region.id);
                 }}
               >
                 <OverlayTimelineBlock
-                  region={region}
+                  region={displayedRange(region)}
                   selected={selected}
-                  resizable={!isScreenshot}
+                  resizable={!isScreenshot && !splitTool}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "overlay-edge", regionId: region.id, edge })
                   }
@@ -1292,18 +1240,17 @@ export function Timeline({
           })}
 
           {/* Variable-speed ranges */}
-          {speedEnabled && speedRanges.map((range) => {
+          {speedEnabled && speedRanges.filter((range) => visibleRange(range.start, range.end)).map((range) => {
             const selected = range.id === selectedSpeedRangeId;
             return (
               <div
                 key={range.id}
                 data-block
-                className="absolute z-10 cursor-pointer"
+                className={cn("absolute z-10", splitTool ? "cursor-crosshair" : "cursor-pointer")}
                 style={{
                   top: speedTop + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(range.start / safeDuration) * 100}%`,
-                  width: `${((range.end - range.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(range.start, range.end),
                 }}
                 onPointerDown={(e) => {
                   if (splitTool) return;
@@ -1312,25 +1259,19 @@ export function Timeline({
                   startDrag(e, {
                     kind: "speed-move",
                     rangeId: range.id,
-                    offset: Math.max(0, pointerTime - range.start),
-                    length: Math.max(0.05, range.end - range.start),
+                    offset: Math.max(0, timeline.toTimeline(pointerTime) - timeline.toTimeline(range.start)),
+                    length: timeline.toTimeline(range.end) - timeline.toTimeline(range.start),
                     startX: e.clientX,
                   });
                 }}
                 onClick={(e) => {
-                  if (splitTool) {
-                    e.stopPropagation();
-                    if (splitAt({ kind: "speed", fragmentId: range.id, time: clientToTime(e.clientX) })) {
-                      setSplitTool(false);
-                    }
-                  } else {
-                    e.stopPropagation();
-                    selectSpeedRange(range.id);
-                  }
+                  e.stopPropagation();
+                  selectSpeedRange(range.id);
                 }}
               >
                 <SpeedTimelineBlock
-                  range={range}
+                  range={displayedRange(range)}
+                  resizable={!splitTool}
                   selected={selected}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "speed-edge", rangeId: range.id, edge })
@@ -1341,18 +1282,17 @@ export function Timeline({
           })}
 
           {/* User-authored text clips */}
-          {textClips.map((clip) => {
+          {textClips.filter((clip) => visibleRange(clip.start, clip.end)).map((clip) => {
             const selected = clip.id === selectedTextClipId;
             return (
               <div
                 key={clip.id}
                 data-block
-                className={cn("absolute z-10", isScreenshot ? "cursor-default" : "cursor-pointer")}
+                className={cn("absolute z-10", splitTool ? "cursor-crosshair" : isScreenshot ? "cursor-default" : "cursor-pointer")}
                 style={{
                   top: textTop + BLOCK_INSET,
                   height: BLOCK_H,
-                  left: `${(clip.start / safeDuration) * 100}%`,
-                  width: `${((clip.end - clip.start) / safeDuration) * 100}%`,
+                  ...rangeStyle(clip.start, clip.end),
                 }}
                 onPointerDown={(e) => {
                   if (isScreenshot) {
@@ -1366,27 +1306,20 @@ export function Timeline({
                   startDrag(e, {
                     kind: "text-move",
                     clipId: clip.id,
-                    offset: Math.max(0, pointerTime - clip.start),
-                    length: Math.max(0.05, clip.end - clip.start),
+                    offset: Math.max(0, timeline.toTimeline(pointerTime) - timeline.toTimeline(clip.start)),
+                    length: timeline.toTimeline(clip.end) - timeline.toTimeline(clip.start),
                     startX: e.clientX,
                   });
                 }}
                 onClick={(e) => {
-                  if (splitTool) {
-                    e.stopPropagation();
-                    if (splitAt({ kind: "text", fragmentId: clip.id, time: clientToTime(e.clientX) })) {
-                      setSplitTool(false);
-                    }
-                  } else {
-                    e.stopPropagation();
-                    selectTextClip(clip.id);
-                  }
+                  e.stopPropagation();
+                  selectTextClip(clip.id);
                 }}
               >
                 <TextTimelineBlock
-                  clip={clip}
+                  clip={displayedRange(clip)}
                   selected={selected}
-                  resizable={!isScreenshot}
+                  resizable={!isScreenshot && !splitTool}
                   onResizePointerDown={(edge, e) =>
                     startDrag(e, { kind: "text-edge", clipId: clip.id, edge })
                   }

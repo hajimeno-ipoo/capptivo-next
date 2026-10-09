@@ -369,15 +369,17 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
       void listen("annotation://closed", () => {
         set({ annotationVisible: false });
       });
-      // Bar closed / take finished — area pick is session UI, not sticky.
+      // Bar closed / capture finished — area pick is session UI, not sticky.
       void listen("recorder://dismissed", () => {
         resetAreaCapture(set, get);
       });
       // Bar reopened — re-warm mic if still selected (Rust cools on dismiss).
       void listen("recorder://shown", () => {
         get().syncMicWarm();
-        const { captureMode, areaSelection } = get();
-        if (captureMode === "area" && areaSelection) {
+        const { captureMode, areaSelection, screenshotBusy } = get();
+        // Screenshot restores the guide only on failure; do not resurrect the
+        // previous selection while its successful capture is being completed.
+        if (captureMode === "area" && areaSelection && !screenshotBusy) {
           void commands.showAreaFrameGuide(areaSelection).catch(() => undefined);
         }
       });
@@ -900,6 +902,7 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
         crop: captureMode === "area" ? areaSelection!.crop : null,
         showCursor: options.showCursor,
       });
+      get().clearAreaSelection();
       // The saved PNG already contains these marks. Wait until the reused ink
       // canvas has actually repainted empty before opening the editor.
       if (annotationWasVisible) {
@@ -954,8 +957,9 @@ export const useRecorderStore = create<RecorderStore>((set, get) => {
       // Rust stops ScreenCaptureKit first, then opens the editor (so the blank
       // editor shell is never in the last frames), then finishes mux/finalize.
       await commands.stopRecording();
-      // `hide_recorder` emits `recorder://dismissed` (clears area); belt for guide/cam.
-      void commands.hideAreaFrameGuide().catch(() => undefined);
+      // Clear locally too: completion must not depend on the dismiss event
+      // reaching a recorder WebView that Rust has just hidden.
+      get().clearAreaSelection();
       void commands.hideCameraPreview().catch(() => undefined);
       set({ annotationVisible: false, micSessionMuted: false });
     } catch (e) {

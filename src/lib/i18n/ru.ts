@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Russian. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ru: Record<TranslationKey, string> = {
+  "fonts.delete": "Удалить добавленный шрифт",
+  "fonts.deleteHint": "Удаляет выбранный шрифт. Использующий его текст возвращается к системному шрифту.",
+  "fonts.default": "Системный шрифт",
+  "fonts.system": "Системные шрифты",
+  "fonts.app": "Шрифты Capptivo",
+  "fonts.register": "Добавить шрифт…",
+  "fonts.refresh": "Обновить список",
+  "fonts.appOnly": "Добавленные шрифты доступны только в Capptivo.",
+  "fonts.error": "Не удалось загрузить шрифт",
   "app.name": "Capptivo_Next",
   "app.untitled": "Запись без названия",
   "app.loading": "Загрузка…",
@@ -161,6 +170,7 @@ export const ru: Record<TranslationKey, string> = {
   "blur.label": "Размытые области",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Сила размытия",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -290,6 +300,9 @@ export const ru: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Instagram альбом",
   "ratio.hint.21:9": "Широкий киноформат",
   "ratio.hint.9:21": "Высокий киноформат",
+  "timeline.empty": "Нет клипов. Сброс восстановит запись.",
+  "timeline.splitTool": "Инструмент разрезания",
+  "timeline.rippleDelete": "Удалить и закрыть промежуток",
   "timeline.split.on":
     "Нажмите на клип или эффект, чтобы разделить. Esc отключает режим.",
   "timeline.split.off": "Включите разделение, затем нажмите, где разрезать",
@@ -415,6 +428,11 @@ export const ru: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Экраны",
   "recorder.sources.windows": "Окна",
   "recorder.sources.empty": "Источники не найдены.",
+  "tray.openRecorder": "Открыть панель записи",
+  "tray.annotateScreen": "Добавить аннотации на экран…",
+  "tray.openLibrary": "Открыть библиотеку…",
+  "tray.quit": "Выйти из {app}",
+
   "recorder.settings.open": "Настройки",
   "recorder.language": "Язык",
   "recorder.hud.pause": "Пауза",

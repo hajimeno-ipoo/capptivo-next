@@ -57,12 +57,18 @@ fn main() {
         "hide_annotation_overlay",
         "annotation_overlay_visible",
         "set_annotation_display_follow",
+        "set_tray_labels",
+        "take_recorder_settings_request",
         "open_library",
         "open_editor",
         "open_screenshot_editor",
         "present_window",
         // system fonts
         "list_system_fonts",
+        "list_app_fonts",
+        "import_app_font",
+        "read_app_font",
+        "delete_app_font",
         // captions
         "get_whisper_model_status",
         "download_whisper_model",

@@ -8,6 +8,8 @@
 use crate::recorder::types::RecorderState;
 use crate::state::AppState;
 use crate::windows;
+use parking_lot::Mutex;
+use serde::Deserialize;
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -16,11 +18,60 @@ use tauri::{AppHandle, Manager};
 
 pub const TRAY_ID: &str = "capptivo-tray";
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayLabels {
+    open_recorder: String,
+    annotate_screen: String,
+    open_library: String,
+    settings: String,
+    check_updates: String,
+    quit: String,
+    pause: String,
+    resume: String,
+    stop: String,
+    open_annotation: String,
+    finalizing: String,
+}
+
+impl Default for TrayLabels {
+    fn default() -> Self {
+        Self {
+            open_recorder: "Open Recorder".into(),
+            annotate_screen: "Annotate Screen…".into(),
+            open_library: "Open Library…".into(),
+            settings: "Settings…".into(),
+            check_updates: "Check for Updates…".into(),
+            quit: "Quit Capptivo_Next".into(),
+            pause: "Pause".into(),
+            resume: "Resume".into(),
+            stop: "Stop".into(),
+            open_annotation: "Show annotations".into(),
+            finalizing: "Finalizing…".into(),
+        }
+    }
+}
+
+struct TrayMenuState(Mutex<TrayLabels>);
+
+fn labels(app: &AppHandle) -> TrayLabels {
+    app.state::<TrayMenuState>().0.lock().clone()
+}
+
+/// The recorder sends translations from the same language catalog as its UI.
+#[tauri::command]
+pub fn set_tray_labels(app: AppHandle, labels: TrayLabels) {
+    *app.state::<TrayMenuState>().0.lock() = labels;
+    let state = app.state::<AppState>().recorder.state();
+    sync_for_state(&app, &state);
+}
+
 /// Flat mark for NSStatusItem — black + alpha only (`icon_as_template`).
 #[cfg(target_os = "macos")]
 const TRAY_TEMPLATE_PNG: &[u8] = include_bytes!("../icons/tray-template@2x.png");
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
+    app.manage(TrayMenuState(Mutex::new(TrayLabels::default())));
     let menu = idle_menu(app)?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
@@ -78,22 +129,23 @@ fn tray_kind(state: &RecorderState) -> TrayKind {
 }
 
 fn idle_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let text = labels(app);
     // "Open Recorder" first: on most Linux DEs (appindicator) tray left-click
     // never fires, so the popover must be reachable from the menu. It's also a
     // discoverable fallback on Windows for users who expect click = menu.
     let open_recorder =
-        MenuItem::with_id(app, "open_recorder", "Open Recorder", true, None::<&str>)?;
+        MenuItem::with_id(app, "open_recorder", &text.open_recorder, true, None::<&str>)?;
     let annotate =
-        MenuItem::with_id(app, "annotate", "Annotate Screen…", true, None::<&str>)?;
-    let open_library = MenuItem::with_id(app, "open_library", "Recordings…", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+        MenuItem::with_id(app, "annotate", &text.annotate_screen, true, None::<&str>)?;
+    let open_library = MenuItem::with_id(app, "open_library", &text.open_library, true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", &text.settings, true, None::<&str>)?;
     // ponytail: "Open Logs…" disabled with file logging for release — uncomment with init_tracing.
     // let open_logs =
     //     MenuItem::with_id(app, "open_logs", "Open Logs…", true, None::<&str>)?;
     let check_updates =
-        MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
+        MenuItem::with_id(app, "check_updates", &text.check_updates, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Capptivo_Next", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", &text.quit, true, None::<&str>)?;
     Menu::with_items(
         app,
         &[
@@ -112,18 +164,19 @@ fn idle_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 /// In-session menu: pause/resume + stop first, then annotate / HUD / library.
 fn live_menu(app: &AppHandle, paused: bool) -> tauri::Result<Menu<tauri::Wry>> {
+    let text = labels(app);
     let pause_or_resume = if paused {
-        MenuItem::with_id(app, "resume", "Resume", true, None::<&str>)?
+        MenuItem::with_id(app, "resume", &text.resume, true, None::<&str>)?
     } else {
-        MenuItem::with_id(app, "pause", "Pause", true, None::<&str>)?
+        MenuItem::with_id(app, "pause", &text.pause, true, None::<&str>)?
     };
-    let stop = MenuItem::with_id(app, "stop", "Stop", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop", &text.stop, true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let annotate =
-        MenuItem::with_id(app, "annotate", "Open Annotation", true, None::<&str>)?;
+        MenuItem::with_id(app, "annotate", &text.open_annotation, true, None::<&str>)?;
     let open_recorder =
-        MenuItem::with_id(app, "open_recorder", "Show Recorder", true, None::<&str>)?;
-    let open_library = MenuItem::with_id(app, "open_library", "Recordings…", true, None::<&str>)?;
+        MenuItem::with_id(app, "open_recorder", &text.open_recorder, true, None::<&str>)?;
+    let open_library = MenuItem::with_id(app, "open_library", &text.open_library, true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     // Quit while recording would leave a half-written project on disk — stop first.
     Menu::with_items(
@@ -141,9 +194,10 @@ fn live_menu(app: &AppHandle, paused: bool) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 fn finalizing_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let status = MenuItem::with_id(app, "finalizing", "Finalizing…", false, None::<&str>)?;
+    let text = labels(app);
+    let status = MenuItem::with_id(app, "finalizing", &text.finalizing, false, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let open_library = MenuItem::with_id(app, "open_library", "Recordings…", true, None::<&str>)?;
+    let open_library = MenuItem::with_id(app, "open_library", &text.open_library, true, None::<&str>)?;
     // No Quit while a take is being finalized — same data-loss risk as mid-record quit.
     Menu::with_items(app, &[&status, &separator, &open_library])
 }
@@ -199,8 +253,9 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         //     }
         // }
         "settings" => {
-            // Settings window is a Phase 5 item; open the popover for now.
-            let _ = windows::show_recorder_popover(app);
+            if let Err(e) = windows::show_recorder_settings(app) {
+                tracing::warn!(%e, "failed to open recorder settings from menu");
+            }
         }
         "check_updates" => {
             crate::updater::spawn_check(app.clone(), crate::updater::Prompt::Interactive);

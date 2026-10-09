@@ -2,8 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import {
+  BLUR_REGION_MIN_STRENGTH,
+  BLUR_REGION_MAX_STRENGTH,
+  normalizeBlurStrength,
   blurRegionIsActive,
   computeCameraTransform,
+  findActivePerspectiveFragment,
+  perspectiveValuesAtTime,
   type BlurRegion,
 } from "@/engine";
 
@@ -20,17 +25,18 @@ import {
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/settings";
 
-import { cornerHandleOverlayStyle, CROP_HANDLE_SIZE } from "../lib/cropHandles";
+import { CROP_HANDLE_SIZE } from "../lib/cropHandles";
 import { formatTimelineTime } from "../lib/timelineMath";
 import { useEditorStore } from "../store";
 import {
   containsPoint,
-  hitHandleAt,
   useRectDrag,
+  type NormRect,
   type RectHit,
 } from "../lib/useRectDrag";
 import type { InspectorCompositionLayout } from "./InspectorCompositionFrame";
-import { stageRectFromRegion, regionFromStageRect } from "../lib/blurRegionGeometry";
+import { stageRectFromRegion, regionFromStageRect, stageQuadFromRect } from "../lib/blurRegionGeometry";
+import { createPerspectivePlaneMapping, hasPerspectiveEffect } from "../lib/perspectiveTransform";
 import { publishPlaybackTime } from "../lib/playback";
 import { getZoomPanAtTime } from "../lib/zoomCache";
 import { videoRectToLayoutFrac } from "../lib/composition";
@@ -56,14 +62,19 @@ type BlurRegionsPanelProps = {
   canvasHost?: HTMLDivElement | null;
 };
 
-type NormRect = { x: number; y: number; width: number; height: number };
-
 function fullSourceRect(sourceVideoSize: { width: number; height: number } | null, fileAspect?: number) {
   if (sourceVideoSize && sourceVideoSize.width > 0 && sourceVideoSize.height > 0) {
     return sourceVideoSize;
   }
   const aspect = fileAspect && fileAspect > 0 ? fileAspect : 16 / 9;
   return { width: Math.max(1e-3, aspect), height: 1 };
+}
+
+function cornerIsVisible(rect: NormRect, corner: string, clipToStage: boolean): boolean {
+  if (!clipToStage) return true;
+  const x = rect.x + (corner.includes("e") ? rect.width : 0);
+  const y = rect.y + (corner.includes("s") ? rect.height : 0);
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1;
 }
 
 export function BlurRegionsPanel({
@@ -106,6 +117,7 @@ export function BlurRegionsPanel({
   }, [canvasHost]);
   const isScreenshot = useEditorStore((s) => s.screenshotId !== null);
   const zoomFragments = useEditorStore((s) => s.zoomFragments);
+  const perspectiveFragments = useEditorStore((s) => s.perspectiveFragments);
   const recordingMetadata = useEditorStore((s) => s.recordingMetadata);
   const previewTime = isScreenshot
     ? SCREENSHOT_RENDER_TIME
@@ -125,6 +137,13 @@ export function BlurRegionsPanel({
     scale: zoom.scale,
     targetScale: resolveZoomReactiveState(activeZoom, previewTime).zoomTargetScale,
   });
+  const perspective = perspectiveValuesAtTime(findActivePerspectiveFragment(perspectiveFragments, previewTime), previewTime);
+  const clipToStage = hasPerspectiveEffect(perspective);
+  const mapping = createPerspectivePlaneMapping(
+    composition.stageDimensions.width,
+    composition.stageDimensions.height,
+    perspective,
+  );
   const visibleRegions = regions.filter((region) =>
     blurRegionIsActive(region, previewTime),
   );
@@ -151,27 +170,41 @@ export function BlurRegionsPanel({
         ? stageRectFromRegion(selected, sourceSize, composition, camera)
         : null;
       if (selected && selectedRect) {
-        const handle = hitHandleAt(x, y, selectedRect, w, h);
-        if (handle) return { key: selected.id, rect: selectedRect, handle };
+        const quad = stageQuadFromRect(selectedRect, mapping);
+        if (quad) {
+          const handle = (["nw", "ne", "se", "sw"] as const).find((corner) =>
+            cornerIsVisible(selectedRect, corner, clipToStage) &&
+            Math.abs(x - quad[corner].x * w) <= CROP_HANDLE_SIZE / 2 &&
+            Math.abs(y - quad[corner].y * h) <= CROP_HANDLE_SIZE / 2,
+          );
+          if (handle) return { key: selected.id, rect: selectedRect, handle };
+        }
       }
+      const point = mapping?.unproject({ x: x / w, y: y / h });
+      if (!point) return null;
+      if (clipToStage && (point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1)) return null;
       const hit = [...visibleRegions]
         .reverse()
         .map((region) => ({
           region,
           rect: stageRectFromRegion(region, sourceSize, composition, camera),
         }))
-        .find(({ rect }) => rect && containsPoint(x, y, rect, w, h));
+        .find(({ rect }) => rect && containsPoint(point.x * w, point.y * h, rect, w, h));
       return hit?.rect
         ? { key: hit.region.id, rect: hit.rect, handle: null }
         : null;
     },
-    [camera, composition, selected, sourceSize, visibleRegions],
+    [camera, clipToStage, composition, mapping, selected, sourceSize, visibleRegions],
   );
 
   const { cursor, handlers } = useRectDrag({
     stageRef,
     disabled,
     pick,
+    mapPointer: (x, y, w, h) => {
+      const point = mapping?.unproject({ x: x / w, y: y / h });
+      return point ? { x: point.x * w, y: point.y * h } : null;
+    },
     onPick: (id) => {
       if (id && useEditorStore.getState().isPlaying) {
         useEditorStore.getState().setPlaying(false);
@@ -188,6 +221,11 @@ export function BlurRegionsPanel({
       onChange(id, regionFromStageRect(next, current, composition, duration, camera));
     },
   });
+
+  const selectedRect = selected
+    ? stageRectFromRegion(selected, sourceSize, composition, camera)
+    : null;
+  const selectedQuad = selectedRect ? stageQuadFromRect(selectedRect, mapping) : null;
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -279,40 +317,42 @@ export function BlurRegionsPanel({
             className="relative h-full w-full touch-none select-none"
             {...handlers}
           >
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             {visibleRegions.map((region) => {
               const rect = stageRectFromRegion(region, sourceSize, composition, camera);
-              if (!rect) return null;
+              const quad = rect ? stageQuadFromRect(rect, mapping, clipToStage) : null;
+              if (!quad) return null;
               return (
-              <div
+              <polygon
                 key={region.id}
                 className={cn(
-                  "pointer-events-none absolute border-2",
+                  "fill-none",
                   region.id === selectedId
-                    ? "border-primary"
-                    : "border-primary/40",
-                  region.kind === "highlight" && "border-amber-400",
+                    ? "stroke-primary"
+                    : "stroke-primary/40",
+                  region.kind === "highlight" && "stroke-amber-400",
                 )}
-                style={{
-                  left: `${rect.x * 100}%`,
-                  top: `${rect.y * 100}%`,
-                  width: `${rect.width * 100}%`,
-                  height: `${rect.height * 100}%`,
-                }}
+                points={Object.values(quad).map((point) => `${point.x * 100},${point.y * 100}`).join(" ")}
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
               />
               );
             })}
+            </svg>
           </div>
-          {selected && stageRectFromRegion(selected, sourceSize, composition, camera) && (
+          {selectedQuad && (
             <div className="pointer-events-none absolute inset-0 z-10">
-              {(["nw", "ne", "se", "sw"] as const).map((h) => (
+              {(["nw", "ne", "se", "sw"] as const).filter((h) => selectedRect && cornerIsVisible(selectedRect, h, clipToStage)).map((h) => (
                 <div
                   key={h}
                   className="pointer-events-none absolute border-2 border-background bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.4),0_1px_4px_rgba(0,0,0,0.5)]"
-                  style={cornerHandleOverlayStyle(
-                    stageRectFromRegion(selected, sourceSize, composition, camera) as NormRect,
-                    h,
-                    CROP_HANDLE_SIZE,
-                  )}
+                  style={{
+                    left: `${selectedQuad[h].x * 100}%`,
+                    top: `${selectedQuad[h].y * 100}%`,
+                    width: CROP_HANDLE_SIZE,
+                    height: CROP_HANDLE_SIZE,
+                    transform: "translate(-50%, -50%)",
+                  }}
                 />
               ))}
             </div>
@@ -349,6 +389,24 @@ export function BlurRegionsPanel({
               className="mt-1 w-full"
             />
           </label>
+          {selected.kind !== "highlight" && (
+            <label className="block text-[11px] text-muted-foreground">
+              <span className="flex items-center justify-between">
+                <span>{t("blur.strength")}</span>
+                <span className="tabular-nums">{normalizeBlurStrength(selected.blurStrength)}</span>
+              </span>
+              <input
+                type="range"
+                min={BLUR_REGION_MIN_STRENGTH}
+                max={BLUR_REGION_MAX_STRENGTH}
+                step={1}
+                value={normalizeBlurStrength(selected.blurStrength)}
+                onChange={(e) => onChange(selected.id, { blurStrength: Number(e.target.value) })}
+                className="mt-1 w-full"
+                aria-label={t("blur.strength")}
+              />
+            </label>
+          )}
           {selected.kind === "highlight" && (
             <>
               <label className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">

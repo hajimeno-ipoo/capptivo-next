@@ -88,6 +88,7 @@ import {
   type EditorPresetSnapshot,
 } from "./lib/editorPresets";
 import { makeScreenshotTimelineStatic } from "./lib/screenshotStaticTimeline";
+import { reconcileAppFontReferences } from "./lib/reconcileAppFontReferences";
 import { supportsEditorFeature } from "./lib/editorMode";
 import { loadRecordingMetadata } from "./lib/cursorLoad";
 import {
@@ -474,6 +475,7 @@ interface EditorStore {
   autoSpeedTyping: () => void;
   setInspectorPanel: (panel: InspectorPanelId) => void;
   setCaptionSettings: (patch: Partial<CaptionSettings>) => void;
+  reconcileAppFonts: (availableFamilies: string[]) => void;
   generateCaptions: () => Promise<void>;
   clearCaptions: () => void;
   /** Fix Whisper typos; timings kept when token count still matches. */
@@ -889,7 +891,7 @@ function parseEditorState(raw: unknown, duration: number): {
     ? data.aspectRatioPresetId
     : undefined;
   return {
-    segments: segments && segments.length > 0 ? segments : createFullSegment(duration),
+    segments: segments ?? createFullSegment(duration),
     zoomFragments,
     perspectiveFragments,
     blurRegions,
@@ -1642,6 +1644,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     schedulePersist(get);
   },
 
+  reconcileAppFonts(availableFamilies) {
+    const { textClips, captionSettings } = get();
+    const reconciled = reconcileAppFontReferences(textClips, captionSettings, availableFamilies);
+    if (!reconciled) return;
+    set(reconciled);
+    schedulePersist(get);
+  },
+
   async generateCaptions() {
     const { projectId, captionSettings } = get();
     if (!projectId) return;
@@ -1909,10 +1919,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const cutLength = Math.min(duration, Math.max(1.5, Math.min(4, duration * 0.15)));
     const cutStart = Math.max(0, currentTime - cutLength / 2);
     const cutEnd = Math.min(duration, cutStart + cutLength);
-    const base =
-      before.segments.length > 0
-        ? normalizeSegments(before.segments, duration, MIN_SEGMENT_LENGTH)
-        : createFullSegment(duration);
+    const base = normalizeSegments(before.segments, duration, MIN_SEGMENT_LENGTH);
     const nextSegments = addTrimGap(base, cutStart, cutEnd, duration);
     const nextPlayable = getNextPlayableTime(nextSegments, cutStart) ?? cutStart;
     set({
@@ -2087,7 +2094,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       }
       const next = removeSegmentById(segments, selectedSegmentId);
       if (next.length === segments.length) return;
-      set({ segments: next, selectedSegmentId: null });
+      const playhead = get().currentTime;
+      const nextTime = getNextPlayableTime(next, playhead) ?? next[next.length - 1]?.end ?? 0;
+      set({ segments: next, selectedSegmentId: null, currentTime: nextTime, isPlaying: false });
       pushHistory(get, set, before);
       schedulePersist(get);
     }

@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Korean. Typed against `TranslationKey` so a missing key is a compile error. */
 export const ko: Record<TranslationKey, string> = {
+  "fonts.delete": "등록 글꼴 삭제",
+  "fonts.deleteHint": "선택한 등록 글꼴을 삭제합니다. 사용 중인 텍스트는 시스템 기본 글꼴로 돌아갑니다.",
+  "fonts.default": "시스템 기본값",
+  "fonts.system": "OS 글꼴",
+  "fonts.app": "Capptivo 글꼴",
+  "fonts.register": "글꼴 등록…",
+  "fonts.refresh": "목록 새로고침",
+  "fonts.appOnly": "등록한 글꼴은 Capptivo에서만 사용할 수 있습니다.",
+  "fonts.error": "글꼴을 불러올 수 없습니다",
   "app.name": "Capptivo_Next",
   "app.untitled": "제목 없는 녹화",
   "app.loading": "로드 중…",
@@ -160,6 +169,7 @@ export const ko: Record<TranslationKey, string> = {
   "blur.label": "블러 영역",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "흐림 강도",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -288,6 +298,9 @@ export const ko: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Instagram 가로",
   "ratio.hint.21:9": "시네마 와이드",
   "ratio.hint.9:21": "시네마 세로",
+  "timeline.empty": "클립이 없습니다. 초기화하면 녹화가 복원됩니다.",
+  "timeline.splitTool": "자르기 도구",
+  "timeline.rippleDelete": "삭제하고 간격 닫기",
   "timeline.split.on": "클립 또는 효과를 클릭해 분할. Esc로 해제.",
   "timeline.split.off": "분할을 켠 다음 자를 위치를 클릭",
   "timeline.deleteSelected": "선택한 조각 삭제",
@@ -412,6 +425,11 @@ export const ko: Record<TranslationKey, string> = {
   "recorder.sources.displays": "디스플레이",
   "recorder.sources.windows": "창",
   "recorder.sources.empty": "소스를 찾을 수 없습니다.",
+  "tray.openRecorder": "녹화 막대 열기",
+  "tray.annotateScreen": "화면에 주석 추가…",
+  "tray.openLibrary": "라이브러리 열기…",
+  "tray.quit": "{app} 종료",
+
   "recorder.settings.open": "설정",
   "recorder.language": "언어",
   "recorder.hud.pause": "일시 정지",

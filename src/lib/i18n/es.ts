@@ -2,6 +2,15 @@ import type { TranslationKey } from "./en";
 
 /** Spanish. Typed against `TranslationKey` so a missing key is a compile error. */
 export const es: Record<TranslationKey, string> = {
+  "fonts.delete": "Eliminar fuente registrada",
+  "fonts.deleteHint": "Elimina la fuente seleccionada. El texto que la utiliza vuelve a la fuente del sistema.",
+  "fonts.default": "Predeterminada del sistema",
+  "fonts.system": "Fuentes del sistema",
+  "fonts.app": "Fuentes de Capptivo",
+  "fonts.register": "Registrar fuente…",
+  "fonts.refresh": "Actualizar lista",
+  "fonts.appOnly": "Las fuentes registradas solo están disponibles en Capptivo.",
+  "fonts.error": "No se pudo cargar la fuente",
   "app.name": "Capptivo_Next",
   "app.untitled": "Grabación sin título",
   "app.loading": "Cargando…",
@@ -168,6 +177,7 @@ export const es: Record<TranslationKey, string> = {
   "blur.label": "Áreas difuminadas",
 
   "blur.addHighlight": "Add highlight",
+  "blur.strength": "Intensidad del desenfoque",
   "blur.mask": "Mask",
   "blur.highlight": "Highlight",
 
@@ -297,6 +307,9 @@ export const es: Record<TranslationKey, string> = {
   "ratio.hint.5:4": "Paisaje Instagram",
   "ratio.hint.21:9": "Cinemático ancho",
   "ratio.hint.9:21": "Cinemático alto",
+  "timeline.empty": "No hay clips. Restablece para recuperar la grabación.",
+  "timeline.splitTool": "Herramienta de corte",
+  "timeline.rippleDelete": "Eliminar y cerrar el espacio",
   "timeline.split.on":
     "Haz clic en un clip o efecto para dividirlo. Esc lo desactiva.",
   "timeline.split.off": "Activa dividir y haz clic donde cortar",
@@ -422,6 +435,11 @@ export const es: Record<TranslationKey, string> = {
   "recorder.sources.displays": "Pantallas",
   "recorder.sources.windows": "Ventanas",
   "recorder.sources.empty": "No se encontraron fuentes.",
+  "tray.openRecorder": "Abrir la barra de grabación",
+  "tray.annotateScreen": "Anotar la pantalla…",
+  "tray.openLibrary": "Abrir la biblioteca…",
+  "tray.quit": "Salir de {app}",
+
   "recorder.settings.open": "Ajustes",
   "recorder.language": "Idioma",
   "recorder.hud.pause": "Pausa",
